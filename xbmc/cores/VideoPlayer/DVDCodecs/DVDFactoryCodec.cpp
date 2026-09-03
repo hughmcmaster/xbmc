@@ -16,6 +16,7 @@
 #include "Overlay/DVDOverlayCodecCCText.h"
 #include "Overlay/DVDOverlayCodecFFmpeg.h"
 #include "Overlay/DVDOverlayCodecSSA.h"
+#include "Overlay/DVDOverlayCodecTeletext.h"
 #include "Overlay/DVDOverlayCodecTX3G.h"
 #include "Overlay/DVDOverlayCodecText.h"
 #include "Overlay/OverlayCodecWebVTT.h"
@@ -277,6 +278,10 @@ std::unique_ptr<CDVDOverlayCodec> CDVDFactoryCodec::CreateOverlayCodec(CDVDStrea
       pCodec = std::make_unique<COverlayCodecWebVTT>();
       break;
 
+    case AV_CODEC_ID_DVB_TELETEXT:
+      pCodec = std::make_unique<CDVDOverlayCodecTeletext>();
+      break;
+
     default:
       pCodec = std::make_unique<CDVDOverlayCodecFFmpeg>();
       break;
@@ -287,4 +292,3 @@ std::unique_ptr<CDVDOverlayCodec> CDVDFactoryCodec::CreateOverlayCodec(CDVDStrea
 
   return nullptr;
 }
-
