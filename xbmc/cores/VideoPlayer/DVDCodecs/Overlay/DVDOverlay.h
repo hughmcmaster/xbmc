@@ -20,6 +20,7 @@ enum DVDOverlayType
   DVDOVERLAY_TYPE_IMAGE   = 3,
   DVDOVERLAY_TYPE_SSA     = 4,
   DVDOVERLAY_TYPE_GROUP   = 5,
+  DVDOVERLAY_TYPE_TELETEXT = 6,
 };
 
 class CDVDOverlay : public std::enable_shared_from_this<CDVDOverlay>
