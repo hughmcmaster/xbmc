@@ -146,6 +146,7 @@ protected:
   void ChangeEventStopTime(int eventId, double stopTime);
 
   friend class CSubtitlesAdapter;
+  friend class CDVDOverlayCodecTeletext;
 
 
 private:
