@@ -4023,14 +4023,13 @@ void CVideoPlayer::SetEnableStream(CCurrentStream& current, bool isEnabled)
 
 int CVideoPlayer::GetTeletextSubtitleCount() const
 {
-  return static_cast<int>(
-      CTeletextDecoder::GetSubtitlePages(const_cast<CVideoPlayer*>(this)->GetTeletextCache()).size());
+  return static_cast<int>(CTeletextDecoder::GetSubtitlePages(GetTeletextCacheInternal()).size());
 }
 
 bool CVideoPlayer::GetTeletextSubtitleStreamInfo(int index, SubtitleStreamInfo& info) const
 {
   const auto pages =
-      CTeletextDecoder::GetSubtitlePages(const_cast<CVideoPlayer*>(this)->GetTeletextCache());
+      CTeletextDecoder::GetSubtitlePages(GetTeletextCacheInternal());
   if (index < 0 || index >= static_cast<int>(pages.size()))
     return false;
 
@@ -4057,7 +4056,7 @@ int CVideoPlayer::GetTeletextSubtitleStreamIndex() const
   }
 
   const auto pages =
-      CTeletextDecoder::GetSubtitlePages(const_cast<CVideoPlayer*>(this)->GetTeletextCache());
+      CTeletextDecoder::GetSubtitlePages(GetTeletextCacheInternal());
   for (size_t index = 0; index < pages.size(); ++index)
   {
     if (pages[index].page == m_teletextSubtitlePage)
@@ -4149,6 +4148,11 @@ void CVideoPlayer::SetSubtitleVerticalPosition(int value, bool save)
 }
 
 std::shared_ptr<TextCacheStruct_t> CVideoPlayer::GetTeletextCache()
+{
+  return GetTeletextCacheInternal();
+}
+
+std::shared_ptr<TextCacheStruct_t> CVideoPlayer::GetTeletextCacheInternal() const
 {
   if (m_CurrentTeletext.id < 0)
     return nullptr;

@@ -1182,7 +1182,9 @@ bool CTeletextDecoder::DecodeSubtitlePage(const std::shared_ptr<TextCacheStruct_
     return false;
 
   const int resolvedSubPage = subPageNumber >= 0 ? subPageNumber : txtCache->SubPageTable[pageNumber];
-  if (resolvedSubPage < 0 || txtCache->astCachetable[pageNumber][resolvedSubPage] == nullptr)
+  if (resolvedSubPage < 0 ||
+      resolvedSubPage >= static_cast<int>(std::size(txtCache->astCachetable[pageNumber])) ||
+      txtCache->astCachetable[pageNumber][resolvedSubPage] == nullptr)
     return false;
 
   struct CacheRestoreGuard
