@@ -1171,7 +1171,9 @@ bool CTeletextDecoder::DecodeSubtitlePage(const std::shared_ptr<TextCacheStruct_
                                           int& nationalSubsetSecondary,
                                           CTeletextDecoder& decoder)
 {
-  if (!txtCache || pageNumber < 0 || pageChar == nullptr || pageAtrb == nullptr)
+  if (!txtCache || pageNumber < 0 ||
+      pageNumber >= static_cast<int>(std::size(txtCache->SubPageTable)) || pageChar == nullptr ||
+      pageAtrb == nullptr)
     return false;
 
   std::unique_lock lock(txtCache->m_critSection);
