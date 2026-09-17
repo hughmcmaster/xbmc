@@ -6250,13 +6250,13 @@ void CVideoPlayer::UpdateContentState()
                                      m_CurrentSubtitle.demuxerId, m_CurrentSubtitle.id);
   if (m_teletextSubtitlePage >= 0)
   {
-    const auto pages = CTeletextDecoder::GetSubtitlePages(GetTeletextCache());
+    const auto pages = CTeletextDecoder::GetSubtitlePages(GetTeletextCacheInternal());
+    const int subtitleCount = m_content.m_selectionStreams.CountType(StreamType::SUBTITLE);
     for (size_t index = 0; index < pages.size(); ++index)
     {
       if (pages[index].page == m_teletextSubtitlePage)
       {
-        m_content.m_subtitleIndex =
-            m_SelectionStreams.CountType(StreamType::SUBTITLE) + static_cast<int>(index);
+        m_content.m_subtitleIndex = subtitleCount + static_cast<int>(index);
         break;
       }
     }
