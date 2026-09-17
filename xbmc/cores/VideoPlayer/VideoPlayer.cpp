@@ -1180,7 +1180,7 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
     CloseStream(m_CurrentSubtitle, false);
     m_processInfo->ResetSubtitleCodecInfo();
   }
-  ResetTeletextSubtitleStream(false);
+  ResetTeletextSubtitleStream();
 
   // only set subtitle visibility if state not stored by dvd navigator, because navigator will restore it (if visible)
   if (!std::dynamic_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream) ||
@@ -3353,7 +3353,7 @@ void CVideoPlayer::HandleMessages()
       }
       else
       {
-        ResetTeletextSubtitleStream(true);
+        ResetTeletextSubtitleStream();
         SelectionStream& st = m_SelectionStreams.Get(StreamType::SUBTITLE, streamId);
         if(st.source != STREAM_SOURCE_NONE)
         {
@@ -4075,25 +4075,13 @@ bool CVideoPlayer::SetTeletextSubtitleStream(int index)
     return false;
 
   CloseStream(m_CurrentSubtitle, false);
-  ResetTeletextSubtitleStream(false);
+  ResetTeletextSubtitleStream();
 
   m_teletextSubtitlePage = pages[index].page;
-  if (txtCache)
-  {
-    std::unique_lock lock(txtCache->m_critSection);
-    m_teletextSubtitleSubPage = txtCache->SubPageTable[m_teletextSubtitlePage] != 0xFF
-                                    ? txtCache->SubPageTable[m_teletextSubtitlePage]
-                                    : 0;
-  }
-  else
-  {
-    m_teletextSubtitleSubPage = 0;
-  }
-
   m_teletextSubtitleAdapter = std::make_unique<CSubtitlesAdapter>();
   if (!m_teletextSubtitleAdapter->Initialize())
   {
-    ResetTeletextSubtitleStream(false);
+    ResetTeletextSubtitleStream();
     return false;
   }
 
@@ -4102,19 +4090,15 @@ bool CVideoPlayer::SetTeletextSubtitleStream(int index)
   return true;
 }
 
-void CVideoPlayer::ResetTeletextSubtitleStream(bool flushOverlay)
+void CVideoPlayer::ResetTeletextSubtitleStream()
 {
   if (m_teletextSubtitleAdapter)
     m_teletextSubtitleAdapter->FlushSubtitles();
-
-  if (flushOverlay)
-    m_overlayContainer.Flush();
 
   m_teletextSubtitleAdapter.reset();
   m_teletextSubtitleOverlay.reset();
   m_teletextSubtitleText.clear();
   m_teletextSubtitlePage = -1;
-  m_teletextSubtitleSubPage = -1;
   m_teletextSubtitleEventId = -1;
 }
 
@@ -4124,8 +4108,8 @@ void CVideoPlayer::ProcessTeletextSubtitles(double pts)
     return;
 
   std::string assText;
-  if (!CTeletextDecoder::GetSubtitlePageASS(GetTeletextCache(), m_teletextSubtitlePage,
-                                            m_teletextSubtitleSubPage, assText))
+  if (!CTeletextDecoder::GetSubtitlePageASS(GetTeletextCache(), m_teletextSubtitlePage, -1,
+                                            assText))
   {
     if (m_teletextSubtitleEventId >= 0)
     {

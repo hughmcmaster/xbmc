@@ -453,7 +453,7 @@ protected:
   bool GetTeletextSubtitleStreamInfo(int index, SubtitleStreamInfo& info) const;
   int GetTeletextSubtitleStreamIndex() const;
   bool SetTeletextSubtitleStream(int index);
-  void ResetTeletextSubtitleStream(bool flushOverlay);
+  void ResetTeletextSubtitleStream();
   void ProcessTeletextSubtitles(double pts);
 
   void SetSubtitleVisibleInternal(bool bVisible);
@@ -629,7 +629,6 @@ protected:
   std::shared_ptr<CDVDOverlay> m_teletextSubtitleOverlay;
   std::string m_teletextSubtitleText;
   int m_teletextSubtitlePage{-1};
-  int m_teletextSubtitleSubPage{-1};
   int m_teletextSubtitleEventId{-1};
 
   CDVDClock m_clock;
