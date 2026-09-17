@@ -14,6 +14,7 @@
 #include "video/TeletextDefines.h"
 
 class CDVDStreamInfo;
+class CDVBTeletextParser;
 
 class CDVDTeletextData : public CThread, public IDVDStreamPlayer
 {
@@ -39,6 +40,7 @@ public:
   bool IsStalled() const override { return true; }
 
   std::shared_ptr<TextCacheStruct_t> GetTeletextCache() { return m_TXTCache; }
+  std::shared_ptr<CDVBTeletextParser> GetParser() const { return m_parser; }
   void LoadPage(int p, int sp, unsigned char* buffer);
 
 protected:
@@ -53,6 +55,7 @@ private:
   void AllocateCache(int magazine);
 
   int m_speed;
+  std::shared_ptr<CDVBTeletextParser> m_parser;
   std::shared_ptr<TextCacheStruct_t> m_TXTCache = std::make_shared<TextCacheStruct_t>();
   CDVDMessageQueue m_messageQueue;
 };

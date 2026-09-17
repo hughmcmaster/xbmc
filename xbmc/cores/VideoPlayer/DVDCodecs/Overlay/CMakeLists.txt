@@ -1,6 +1,7 @@
 set(SOURCES DVDOverlayCodec.cpp
             DVDOverlayCodecFFmpeg.cpp
             DVDOverlayCodecSSA.cpp
+            DVDOverlayCodecTeletext.cpp
             DVDOverlayCodecText.cpp
             DVDOverlayCodecCCText.cpp
             DVDOverlayCodecTX3G.cpp
@@ -13,6 +14,7 @@ set(HEADERS DVDOverlay.h
             DVDOverlayCodecFFmpeg.h
             DVDOverlayCodecSSA.h
             DVDOverlayCodecTX3G.h
+            DVDOverlayCodecTeletext.h
             DVDOverlayCodecText.h
             DVDOverlayCodecCCText.h
             DVDOverlayImage.h

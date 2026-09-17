@@ -1861,6 +1861,7 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
           CDemuxStreamTeletext* st = new CDemuxStreamTeletext();
           stream = st;
           stream->type = StreamType::TELETEXT;
+          stream->codec = pStream->codecpar->codec_id;
           break;
         }
         else

@@ -112,6 +112,7 @@ class CDemuxStreamAudio;
 class CStreamInfo;
 class CDVDDemuxCC;
 class CVideoPlayer;
+class CDVBTeletextParser;
 
 #define DVDSTATE_NORMAL           0x00000001 // normal dvd state
 #define DVDSTATE_STILL            0x00000002 // currently displaying a still frame
@@ -614,6 +615,7 @@ protected:
   std::unique_ptr<IDVDStreamPlayerAudio> m_VideoPlayerAudio;
   std::unique_ptr<CVideoPlayerSubtitle> m_VideoPlayerSubtitle;
   std::unique_ptr<CDVDTeletextData> m_VideoPlayerTeletext;
+  std::shared_ptr<CDVBTeletextParser> m_teletextParser;
   std::unique_ptr<CDVDRadioRDSData> m_VideoPlayerRadioRDS;
   std::unique_ptr<CVideoPlayerAudioID3> m_VideoPlayerAudioID3;
 

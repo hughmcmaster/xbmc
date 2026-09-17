@@ -22,6 +22,8 @@ extern "C"
 class CDemuxStream;
 struct DemuxCryptoSession;
 
+class CDVBTeletextParser;
+
 class CDVDStreamInfo
 {
 public:
@@ -90,6 +92,10 @@ public:
   uint64_t channellayout;
 
   // SUBTITLE
+  std::shared_ptr<CDVBTeletextParser> teletextParser;
+  int teletextService{-1};
+  int teletextPage{-1};
+  int teletextSubPage{-1};
 
   // CODEC EXTRADATA
   FFmpegExtraData extradata; // extra data for codec to use

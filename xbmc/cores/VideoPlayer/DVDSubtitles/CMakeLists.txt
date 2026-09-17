@@ -1,4 +1,5 @@
-set(SOURCES DVDFactorySubtitle.cpp
+set(SOURCES DVBTeletextParser.cpp
+            DVDFactorySubtitle.cpp
             DVDSubtitleLineCollection.cpp
             DVDSubtitleParserMicroDVD.cpp
             DVDSubtitleParserMPL2.cpp
@@ -13,7 +14,8 @@ set(SOURCES DVDFactorySubtitle.cpp
             SubtitleParserWebVTT.cpp
             SubtitlesAdapter.cpp)
 
-set(HEADERS DVDFactorySubtitle.h
+set(HEADERS DVBTeletextParser.h
+            DVDFactorySubtitle.h
             DVDSubtitleLineCollection.h
             DVDSubtitleParser.h
             DVDSubtitleParserMPL2.h

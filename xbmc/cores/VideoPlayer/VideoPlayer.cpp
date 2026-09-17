@@ -664,6 +664,19 @@ void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input,
       {
         s.codecDesc = static_cast<CDemuxStreamSubtitle*>(stream)->GetStreamType();
       }
+      if (stream->type == StreamType::TELETEXT && stream->codec == AV_CODEC_ID_DVB_TELETEXT)
+      {
+//        SelectionStream subtitle = s;
+//        subtitle.type = StreamType::SUBTITLE;
+//        subtitle.codecDesc = "DVB Teletext";
+//        if (subtitle.name.empty())
+//          subtitle.name = "DVB Teletext";
+//        Update(subtitle)
+        s.type = StreamType::SUBTITLE;
+        s.codecDesc = "DVB Teletext";
+        if (s.name.empty())
+          s.name = "DVB Teletext";
+      }
       Update(s);
     }
   }
@@ -697,6 +710,8 @@ void CVideoPlayer::CreatePlayers()
 {
   if (m_players_created)
     return;
+
+  m_teletextParser = std::make_shared<CDVBTeletextParser>();
 
   m_VideoPlayerVideo =
       std::make_unique<CVideoPlayerVideo>(&m_clock, &m_overlayContainer, m_messenger,
@@ -1141,6 +1156,11 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
   valid   = false;
   for (const auto& stream : m_SelectionStreams.Get(StreamType::TELETEXT))
   {
+    if (m_CurrentSubtitle.id == stream.id &&
+        m_CurrentSubtitle.demuxerId == stream.demuxerId &&
+        m_CurrentSubtitle.source == stream.source)
+      continue;
+
     if (OpenStream(m_CurrentTeletext, stream.demuxerId, stream.id, stream.source))
     {
       valid = true;
@@ -1831,17 +1851,24 @@ bool CVideoPlayer::CheckIsCurrent(const CCurrentStream& current,
                                   CDemuxStream* stream,
                                   DemuxPacket* pkg)
 {
-  if(current.id == pkg->iStreamId &&
-     current.demuxerId == stream->demuxerId &&
-     current.source == stream->source &&
-     current.type == stream->type)
-    return true;
-  else
+  if (current.id != pkg->iStreamId ||
+      current.demuxerId != stream->demuxerId ||
+      current.source != stream->source)
     return false;
+
+  if (current.type == stream->type)
+    return true;
+
+  return current.type == StreamType::SUBTITLE &&
+         stream->type == StreamType::TELETEXT &&
+         stream->codec == AV_CODEC_ID_DVB_TELETEXT;
 }
 
 void CVideoPlayer::ProcessPacket(CDemuxStream* pStream, DemuxPacket* pPacket)
 {
+  if (pStream && pStream->codec == AV_CODEC_ID_DVB_TELETEXT && m_teletextParser)
+    m_teletextParser->Parse(pPacket);
+
   // process packet if it belongs to selected stream.
   // for dvd's don't allow automatic opening of streams*/
 
@@ -2934,6 +2961,8 @@ void CVideoPlayer::OnExit()
   m_pSubtitleDemuxer.reset();
   m_subtitleDemuxerMap.clear();
   m_pCCDemuxer.reset();
+  if (m_teletextParser)
+    m_teletextParser->Reset();
   if (m_pInputStream.use_count() > 1)
     throw std::runtime_error("m_pInputStream reference count is greater than 1");
   m_pInputStream.reset();
@@ -4149,6 +4178,9 @@ bool CVideoPlayer::OpenStream(CCurrentStream& current, int64_t demuxerId, int iS
     m_pSubtitleDemuxer->EnableStream(demuxerId, iStream, true);
 
     hint.Assign(*stream, true);
+
+    if (current.type == StreamType::SUBTITLE && hint.codec == AV_CODEC_ID_DVB_TELETEXT)
+      hint.teletextParser = m_teletextParser;
   }
   else if(STREAM_SOURCE_MASK(source) == STREAM_SOURCE_TEXT)
   {
