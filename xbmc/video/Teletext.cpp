@@ -1183,44 +1183,60 @@ bool CTeletextDecoder::DecodeSubtitlePage(const std::shared_ptr<TextCacheStruct_
   if (resolvedSubPage < 0 || txtCache->astCachetable[pageNumber][resolvedSubPage] == nullptr)
     return false;
 
-  const int page = txtCache->Page;
-  const int subPage = txtCache->SubPage;
-  const bool zapSubpageManual = txtCache->ZapSubpageManual;
-  const int savedNationalSubset = txtCache->NationalSubset;
-  const int savedNationalSubsetSecondary = txtCache->NationalSubsetSecondary;
-  const unsigned char fullRowColor[25]{txtCache->FullRowColor[0],
-                                       txtCache->FullRowColor[1],
-                                       txtCache->FullRowColor[2],
-                                       txtCache->FullRowColor[3],
-                                       txtCache->FullRowColor[4],
-                                       txtCache->FullRowColor[5],
-                                       txtCache->FullRowColor[6],
-                                       txtCache->FullRowColor[7],
-                                       txtCache->FullRowColor[8],
-                                       txtCache->FullRowColor[9],
-                                       txtCache->FullRowColor[10],
-                                       txtCache->FullRowColor[11],
-                                       txtCache->FullRowColor[12],
-                                       txtCache->FullRowColor[13],
-                                       txtCache->FullRowColor[14],
-                                       txtCache->FullRowColor[15],
-                                       txtCache->FullRowColor[16],
-                                       txtCache->FullRowColor[17],
-                                       txtCache->FullRowColor[18],
-                                       txtCache->FullRowColor[19],
-                                       txtCache->FullRowColor[20],
-                                       txtCache->FullRowColor[21],
-                                       txtCache->FullRowColor[22],
-                                       txtCache->FullRowColor[23],
-                                       txtCache->FullRowColor[24]};
-  const unsigned char fullScrColor = txtCache->FullScrColor;
-  const short pop = txtCache->pop;
-  const short gpop = txtCache->gpop;
-  const short drcs = txtCache->drcs;
-  const short gdrcs = txtCache->gdrcs;
-  const unsigned char tAPx = txtCache->tAPx;
-  const unsigned char tAPy = txtCache->tAPy;
-  unsigned short* const colorTable = txtCache->ColorTable;
+  struct CacheRestoreGuard
+  {
+    explicit CacheRestoreGuard(TextCacheStruct_t& cache) : m_cache(cache)
+    {
+      memcpy(fullRowColor, cache.FullRowColor, sizeof(fullRowColor));
+      page = cache.Page;
+      subPage = cache.SubPage;
+      zapSubpageManual = cache.ZapSubpageManual;
+      nationalSubset = cache.NationalSubset;
+      nationalSubsetSecondary = cache.NationalSubsetSecondary;
+      fullScrColor = cache.FullScrColor;
+      pop = cache.pop;
+      gpop = cache.gpop;
+      drcs = cache.drcs;
+      gdrcs = cache.gdrcs;
+      tAPx = cache.tAPx;
+      tAPy = cache.tAPy;
+      colorTable = cache.ColorTable;
+    }
+
+    ~CacheRestoreGuard()
+    {
+      memcpy(m_cache.FullRowColor, fullRowColor, sizeof(fullRowColor));
+      m_cache.Page = page;
+      m_cache.SubPage = subPage;
+      m_cache.ZapSubpageManual = zapSubpageManual;
+      m_cache.NationalSubset = nationalSubset;
+      m_cache.NationalSubsetSecondary = nationalSubsetSecondary;
+      m_cache.FullScrColor = fullScrColor;
+      m_cache.pop = pop;
+      m_cache.gpop = gpop;
+      m_cache.drcs = drcs;
+      m_cache.gdrcs = gdrcs;
+      m_cache.tAPx = tAPx;
+      m_cache.tAPy = tAPy;
+      m_cache.ColorTable = colorTable;
+    }
+
+    TextCacheStruct_t& m_cache;
+    int page{};
+    int subPage{};
+    bool zapSubpageManual{};
+    int nationalSubset{};
+    int nationalSubsetSecondary{};
+    unsigned char fullRowColor[25]{};
+    unsigned char fullScrColor{};
+    short pop{};
+    short gpop{};
+    short drcs{};
+    short gdrcs{};
+    unsigned char tAPx{};
+    unsigned char tAPy{};
+    unsigned short* colorTable{};
+  } restoreGuard(*txtCache);
 
   txtCache->Page = pageNumber;
   txtCache->SubPage = resolvedSubPage;
@@ -1232,21 +1248,6 @@ bool CTeletextDecoder::DecodeSubtitlePage(const std::shared_ptr<TextCacheStruct_
   if (txtCache->ColorTable)
     decoder.SetColors(txtCache->ColorTable, 16, 16);
 
-  txtCache->Page = page;
-  txtCache->SubPage = subPage;
-  txtCache->ZapSubpageManual = zapSubpageManual;
-  txtCache->NationalSubset = savedNationalSubset;
-  txtCache->NationalSubsetSecondary = savedNationalSubsetSecondary;
-  memcpy(txtCache->FullRowColor, fullRowColor, sizeof(fullRowColor));
-  txtCache->FullScrColor = fullScrColor;
-  txtCache->pop = pop;
-  txtCache->gpop = gpop;
-  txtCache->drcs = drcs;
-  txtCache->gdrcs = gdrcs;
-  txtCache->tAPx = tAPx;
-  txtCache->tAPy = tAPy;
-  txtCache->ColorTable = colorTable;
-
   return pageInfo != nullptr;
 }
 
@@ -1254,6 +1255,15 @@ std::string CTeletextDecoder::ConvertSubtitlePageToASS(const unsigned char* page
                                                        const TextPageAttr_t* pageAtrb)
 {
   return ConvertSubtitlePageToASSImpl(pageChar, pageAtrb, NAT_DEFAULT, NAT_DEFAULT);
+}
+
+std::string CTeletextDecoder::ConvertSubtitlePageToASS(const unsigned char* pageChar,
+                                                       const TextPageAttr_t* pageAtrb,
+                                                       int nationalSubset,
+                                                       int nationalSubsetSecondary)
+{
+  return ConvertSubtitlePageToASSImpl(pageChar, pageAtrb, nationalSubset,
+                                      nationalSubsetSecondary);
 }
 
 void CTeletextDecoder::EndDecoder()

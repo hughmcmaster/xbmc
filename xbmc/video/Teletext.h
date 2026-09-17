@@ -66,6 +66,10 @@ public:
                                  std::string& assText);
   static std::string ConvertSubtitlePageToASS(const unsigned char* pageChar,
                                               const TextPageAttr_t* pageAtrb);
+  static std::string ConvertSubtitlePageToASS(const unsigned char* pageChar,
+                                              const TextPageAttr_t* pageAtrb,
+                                              int nationalSubset,
+                                              int nationalSubsetSecondary);
   void EndDecoder();
   void RenderPage();
   bool HandleAction(const CAction &action);
