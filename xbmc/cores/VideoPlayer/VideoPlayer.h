@@ -449,6 +449,7 @@ protected:
    */
   void SetEnableStream(CCurrentStream& current, bool isEnabled);
 
+  std::shared_ptr<TextCacheStruct_t> GetTeletextCacheInternal() const;
   int GetTeletextSubtitleCount() const;
   bool GetTeletextSubtitleStreamInfo(int index, SubtitleStreamInfo& info) const;
   int GetTeletextSubtitleStreamIndex() const;
