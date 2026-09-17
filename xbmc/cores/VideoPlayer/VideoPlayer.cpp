@@ -4127,6 +4127,12 @@ void CVideoPlayer::ProcessTeletextSubtitles(double pts)
   if (!CTeletextDecoder::GetSubtitlePageASS(GetTeletextCache(), m_teletextSubtitlePage,
                                             m_teletextSubtitleSubPage, assText))
   {
+    if (m_teletextSubtitleEventId >= 0)
+    {
+      m_teletextSubtitleAdapter->ChangeSubtitleStopTime(m_teletextSubtitleEventId, pts);
+      m_teletextSubtitleEventId = NO_SUBTITLE_ID;
+    }
+    m_teletextSubtitleText.clear();
     return;
   }
 
@@ -6465,8 +6471,13 @@ void CVideoPlayer::SetSubtitle(int iStream)
 
 int CVideoPlayer::GetSubtitleCount() const
 {
-  std::unique_lock lock(m_content.m_section);
-  return m_content.m_selectionStreams.CountType(StreamType::SUBTITLE) + GetTeletextSubtitleCount();
+  int normalSubtitleCount{0};
+  {
+    std::unique_lock lock(m_content.m_section);
+    normalSubtitleCount = m_content.m_selectionStreams.CountType(StreamType::SUBTITLE);
+  }
+
+  return normalSubtitleCount + GetTeletextSubtitleCount();
 }
 
 int CVideoPlayer::GetSubtitle()

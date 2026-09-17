@@ -108,3 +108,23 @@ TEST(TestTeletext, ConvertSubtitlePageToASSHidesConcealedCharacters)
   EXPECT_EQ(std::string::npos, assText.find("X"));
   EXPECT_NE(std::string::npos, assText.find("B"));
 }
+
+TEST(TestTeletext, ConvertSubtitlePageToASSAppliesNationalSubsetAndDiacritics)
+{
+  unsigned char pageChar[TELETEXT_PAGE_SIZE];
+  TextPageAttr_t pageAtrb[TELETEXT_PAGE_SIZE];
+  std::fill_n(pageChar, TELETEXT_PAGE_SIZE, ' ');
+  std::fill_n(pageAtrb, TELETEXT_PAGE_SIZE, VisibleAttr(TXT_ColorTransp, TXT_ColorTransp));
+
+  pageChar[4 * 40 + 4] = '[';
+  pageChar[4 * 40 + 5] = 'A';
+  pageAtrb[4 * 40 + 4] = VisibleAttr();
+  pageAtrb[4 * 40 + 5] = VisibleAttr();
+  pageAtrb[4 * 40 + 5].diacrit = 2;
+
+  const std::string assText =
+      CTeletextDecoder::ConvertSubtitlePageToASS(pageChar, pageAtrb, NAT_DE, NAT_DEFAULT);
+
+  EXPECT_NE(std::string::npos, assText.find("Ä"));
+  EXPECT_NE(std::string::npos, assText.find("Á"));
+}
