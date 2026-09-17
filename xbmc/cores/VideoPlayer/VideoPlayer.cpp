@@ -24,6 +24,7 @@
 #include "DVDInputStreams/DVDInputStreamNavigator.h"
 #include "DVDInputStreams/InputStreamPVRBase.h"
 #include "DVDMessage.h"
+#include "DVDSubtitles/SubtitlesAdapter.h"
 #include "FileItem.h"
 #include "LangInfo.h"
 #include "ServiceBroker.h"
@@ -58,6 +59,7 @@
 #include "utils/URIUtils.h"
 #include "utils/Variant.h"
 #include "utils/log.h"
+#include "video/Teletext.h"
 #include "video/Bookmark.h"
 #include "video/VideoInfoTag.h"
 #include "windowing/GraphicContext.h"
@@ -93,6 +95,59 @@ namespace
 bool IsKnownLanguage(const CLanguageTag& language)
 {
   return !language.IsUndetermined();
+}
+
+constexpr double TELE_TEXT_SUBTITLE_DEFAULT_DURATION = 20.0 * static_cast<double>(DVD_TIME_BASE);
+
+CLanguageTag GetTeletextLanguageTag(short language)
+{
+  switch (language)
+  {
+    case NAT_CZ:
+      return CLanguageTag::Parse("cs");
+    case NAT_UK:
+      return CLanguageTag::Parse("en");
+    case NAT_ET:
+      return CLanguageTag::Parse("et");
+    case NAT_FR:
+      return CLanguageTag::Parse("fr");
+    case NAT_DE:
+      return CLanguageTag::Parse("de");
+    case NAT_IT:
+      return CLanguageTag::Parse("it");
+    case NAT_LV:
+      return CLanguageTag::Parse("lv");
+    case NAT_PL:
+      return CLanguageTag::Parse("pl");
+    case NAT_SP:
+      return CLanguageTag::Parse("es");
+    case NAT_RO:
+      return CLanguageTag::Parse("ro");
+    case NAT_SR:
+      return CLanguageTag::Parse("sr");
+    case NAT_SW:
+      return CLanguageTag::Parse("sv");
+    case NAT_TR:
+      return CLanguageTag::Parse("tr");
+    case NAT_SC:
+    case NAT_RB:
+      return CLanguageTag::Parse("ru");
+    case NAT_UA:
+      return CLanguageTag::Parse("uk");
+    case NAT_GR:
+      return CLanguageTag::Parse("el");
+    case NAT_HB:
+      return CLanguageTag::Parse("he");
+    case NAT_AR:
+      return CLanguageTag::Parse("ar");
+    default:
+      return {};
+  }
+}
+
+std::string FormatTeletextSubtitleName(int pageNumber)
+{
+  return StringUtils::Format("Teletext {:03X}", pageNumber);
 }
 } // unnamed namespace
 
@@ -1125,6 +1180,7 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
     CloseStream(m_CurrentSubtitle, false);
     m_processInfo->ResetSubtitleCodecInfo();
   }
+  ResetTeletextSubtitleStream(false);
 
   // only set subtitle visibility if state not stored by dvd navigator, because navigator will restore it (if visible)
   if (!std::dynamic_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream) ||
@@ -1630,7 +1686,10 @@ void CVideoPlayer::Process()
     UpdatePlayState(200);
 
     // make sure we run subtitle process here
-    m_VideoPlayerSubtitle->Process(m_clock.GetClock() + m_State.time_offset - m_VideoPlayerVideo->GetSubtitleDelay(), m_State.time_offset);
+    const double subtitlePts =
+        m_clock.GetClock() + m_State.time_offset - m_VideoPlayerVideo->GetSubtitleDelay();
+    m_VideoPlayerSubtitle->Process(subtitlePts, m_State.time_offset);
+    ProcessTeletextSubtitles(subtitlePts);
 
     // tell demuxer if we want to fill buffers
     if (m_demuxerSpeed != DVD_PLAYSPEED_PAUSE)
@@ -3285,36 +3344,47 @@ void CVideoPlayer::HandleMessages()
     {
       auto pMsg2 = std::static_pointer_cast<CDVDMsgPlayerSetSubtitleStream>(pMsg);
 
-      SelectionStream& st = m_SelectionStreams.Get(StreamType::SUBTITLE, pMsg2->GetStreamId());
-      if(st.source != STREAM_SOURCE_NONE)
+      const int streamId = pMsg2->GetStreamId();
+      const int normalSubtitleCount = m_SelectionStreams.CountType(StreamType::SUBTITLE);
+      if (streamId >= normalSubtitleCount)
       {
-        if(st.source == STREAM_SOURCE_NAV && m_pInputStream && m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD))
+        if (SetTeletextSubtitleStream(streamId - normalSubtitleCount))
+          m_processInfo->ResetSubtitleCodecInfo();
+      }
+      else
+      {
+        ResetTeletextSubtitleStream(true);
+        SelectionStream& st = m_SelectionStreams.Get(StreamType::SUBTITLE, streamId);
+        if(st.source != STREAM_SOURCE_NONE)
         {
-          std::shared_ptr<CDVDInputStreamNavigator> pStream = std::static_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream);
-          if(pStream->SetActiveSubtitleStream(st.id))
+          if(st.source == STREAM_SOURCE_NAV && m_pInputStream && m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD))
           {
-            m_dvd.iSelectedSPUStream = -1;
-            CloseStream(m_CurrentSubtitle, false);
+            std::shared_ptr<CDVDInputStreamNavigator> pStream = std::static_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream);
+            if(pStream->SetActiveSubtitleStream(st.id))
+            {
+              m_dvd.iSelectedSPUStream = -1;
+              CloseStream(m_CurrentSubtitle, false);
+            }
           }
-        }
-        else
-        {
-          CloseStream(m_CurrentSubtitle, false);
-          OpenStream(m_CurrentSubtitle, st.demuxerId, st.id, st.source);
-
-          // For embedded subtitles the demuxer is ahead of playback (AV buffers
-          // are full), so the subtitle packets for the current playback time have
-          // already been read and discarded. Seek back to the current time so they
-          // get re-read, mirroring what audio stream switching does.
-          if (STREAM_SOURCE_MASK(st.source) == STREAM_SOURCE_DEMUX)
+          else
           {
-            CDVDMsgPlayerSeek::CMode mode;
-            mode.time = static_cast<double>(GetUpdatedTime());
-            mode.backward = true;
-            mode.accurate = true;
-            mode.trickplay = true;
-            mode.sync = true;
-            m_messenger.Put(std::make_shared<CDVDMsgPlayerSeek>(mode));
+            CloseStream(m_CurrentSubtitle, false);
+            OpenStream(m_CurrentSubtitle, st.demuxerId, st.id, st.source);
+
+            // For embedded subtitles the demuxer is ahead of playback (AV buffers
+            // are full), so the subtitle packets for the current playback time have
+            // already been read and discarded. Seek back to the current time so they
+            // get re-read, mirroring what audio stream switching does.
+            if (STREAM_SOURCE_MASK(st.source) == STREAM_SOURCE_DEMUX)
+            {
+              CDVDMsgPlayerSeek::CMode mode;
+              mode.time = static_cast<double>(GetUpdatedTime());
+              mode.backward = true;
+              mode.accurate = true;
+              mode.trickplay = true;
+              mode.sync = true;
+              m_messenger.Put(std::make_shared<CDVDMsgPlayerSeek>(mode));
+            }
           }
         }
       }
@@ -3949,6 +4019,127 @@ void CVideoPlayer::SetEnableStream(CCurrentStream& current, bool isEnabled)
   {
     m_pDemuxer->EnableStream(current.demuxerId, current.id, isEnabled);
   }
+}
+
+int CVideoPlayer::GetTeletextSubtitleCount() const
+{
+  return static_cast<int>(
+      CTeletextDecoder::GetSubtitlePages(const_cast<CVideoPlayer*>(this)->GetTeletextCache()).size());
+}
+
+bool CVideoPlayer::GetTeletextSubtitleStreamInfo(int index, SubtitleStreamInfo& info) const
+{
+  const auto pages =
+      CTeletextDecoder::GetSubtitlePages(const_cast<CVideoPlayer*>(this)->GetTeletextCache());
+  if (index < 0 || index >= static_cast<int>(pages.size()))
+    return false;
+
+  info = SubtitleStreamInfo{};
+  info.valid = true;
+  info.language = GetTeletextLanguageTag(pages[index].language);
+  info.name = FormatTeletextSubtitleName(pages[index].page);
+  info.codecName = "teletext";
+  info.codecDesc = "Teletext";
+  info.flags = StreamFlags::FLAG_NONE;
+  info.isExternal = false;
+  return true;
+}
+
+int CVideoPlayer::GetTeletextSubtitleStreamIndex() const
+{
+  if (m_teletextSubtitlePage < 0)
+    return -1;
+
+  int normalSubtitleCount{0};
+  {
+    std::unique_lock lock(m_content.m_section);
+    normalSubtitleCount = m_content.m_selectionStreams.CountType(StreamType::SUBTITLE);
+  }
+
+  const auto pages =
+      CTeletextDecoder::GetSubtitlePages(const_cast<CVideoPlayer*>(this)->GetTeletextCache());
+  for (size_t index = 0; index < pages.size(); ++index)
+  {
+    if (pages[index].page == m_teletextSubtitlePage)
+      return normalSubtitleCount + static_cast<int>(index);
+  }
+
+  return -1;
+}
+
+bool CVideoPlayer::SetTeletextSubtitleStream(int index)
+{
+  const auto txtCache = GetTeletextCache();
+  const auto pages = CTeletextDecoder::GetSubtitlePages(txtCache);
+  if (index < 0 || index >= static_cast<int>(pages.size()))
+    return false;
+
+  CloseStream(m_CurrentSubtitle, false);
+  ResetTeletextSubtitleStream(false);
+
+  m_teletextSubtitlePage = pages[index].page;
+  if (txtCache)
+  {
+    std::unique_lock lock(txtCache->m_critSection);
+    m_teletextSubtitleSubPage = txtCache->SubPageTable[m_teletextSubtitlePage] != 0xFF
+                                    ? txtCache->SubPageTable[m_teletextSubtitlePage]
+                                    : 0;
+  }
+  else
+  {
+    m_teletextSubtitleSubPage = 0;
+  }
+
+  m_teletextSubtitleAdapter = std::make_unique<CSubtitlesAdapter>();
+  if (!m_teletextSubtitleAdapter->Initialize())
+  {
+    ResetTeletextSubtitleStream(false);
+    return false;
+  }
+
+  m_teletextSubtitleOverlay = m_teletextSubtitleAdapter->CreateOverlay();
+  m_overlayContainer.ProcessAndAddOverlayIfValid(m_teletextSubtitleOverlay);
+  return true;
+}
+
+void CVideoPlayer::ResetTeletextSubtitleStream(bool flushOverlay)
+{
+  if (m_teletextSubtitleAdapter)
+    m_teletextSubtitleAdapter->FlushSubtitles();
+
+  if (flushOverlay)
+    m_overlayContainer.Flush();
+
+  m_teletextSubtitleAdapter.reset();
+  m_teletextSubtitleOverlay.reset();
+  m_teletextSubtitleText.clear();
+  m_teletextSubtitlePage = -1;
+  m_teletextSubtitleSubPage = -1;
+  m_teletextSubtitleEventId = -1;
+}
+
+void CVideoPlayer::ProcessTeletextSubtitles(double pts)
+{
+  if (m_teletextSubtitlePage < 0 || !m_teletextSubtitleAdapter)
+    return;
+
+  std::string assText;
+  if (!CTeletextDecoder::GetSubtitlePageASS(GetTeletextCache(), m_teletextSubtitlePage,
+                                            m_teletextSubtitleSubPage, assText))
+  {
+    return;
+  }
+
+  if (assText == m_teletextSubtitleText)
+    return;
+
+  if (m_teletextSubtitleEventId >= 0)
+    m_teletextSubtitleAdapter->ChangeSubtitleStopTime(m_teletextSubtitleEventId, pts);
+
+  m_teletextSubtitleText = std::move(assText);
+  m_teletextSubtitleEventId =
+      m_teletextSubtitleAdapter->AddSubtitle(m_teletextSubtitleText, pts,
+                                             pts + TELE_TEXT_SUBTITLE_DEFAULT_DURATION);
 }
 
 void CVideoPlayer::SetSubtitleVisibleInternal(bool bVisible)
@@ -6063,6 +6254,19 @@ void CVideoPlayer::UpdateContentState()
   m_content.m_subtitleIndex =
       m_SelectionStreams.TypeIndexOf(StreamType::SUBTITLE, m_CurrentSubtitle.source,
                                      m_CurrentSubtitle.demuxerId, m_CurrentSubtitle.id);
+  if (m_teletextSubtitlePage >= 0)
+  {
+    const auto pages = CTeletextDecoder::GetSubtitlePages(GetTeletextCache());
+    for (size_t index = 0; index < pages.size(); ++index)
+    {
+      if (pages[index].page == m_teletextSubtitlePage)
+      {
+        m_content.m_subtitleIndex =
+            m_SelectionStreams.CountType(StreamType::SUBTITLE) + static_cast<int>(index);
+        break;
+      }
+    }
+  }
 
   if (m_pInputStream->IsStreamType(DVDSTREAM_TYPE_DVD) && m_content.m_videoIndex == -1 &&
       m_content.m_audioIndex == -1)
@@ -6218,30 +6422,38 @@ void CVideoPlayer::SetAudioStream(int iStream)
 
 void CVideoPlayer::GetSubtitleStreamInfo(int index, SubtitleStreamInfo& info) const
 {
-  std::unique_lock lock(m_content.m_section);
-
-  if (index == CURRENT_STREAM)
-    index = m_content.m_subtitleIndex;
-
-  if (index < 0 || index > GetSubtitleCount() - 1)
+  int subtitleIndex = index;
+  int normalSubtitleCount = 0;
   {
-    info = SubtitleStreamInfo{};
-    return;
+    std::unique_lock lock(m_content.m_section);
+
+    if (subtitleIndex == CURRENT_STREAM)
+      subtitleIndex = m_content.m_subtitleIndex;
+
+    normalSubtitleCount = m_content.m_selectionStreams.CountType(StreamType::SUBTITLE);
+    if (subtitleIndex >= 0 && subtitleIndex < normalSubtitleCount)
+    {
+      const SelectionStream& s = m_content.m_selectionStreams.Get(StreamType::SUBTITLE, subtitleIndex);
+      info.name = s.name;
+
+      if (s.type == StreamType::NONE)
+        info.name += "(Invalid)";
+
+      info.valid = true;
+      info.language = s.language;
+      info.codecName = s.codec;
+      info.codecDesc = s.codecDesc;
+      info.flags = s.flags;
+      info.isExternal = STREAM_SOURCE_MASK(s.source) == STREAM_SOURCE_DEMUX_SUB ||
+                        STREAM_SOURCE_MASK(s.source) == STREAM_SOURCE_TEXT;
+      return;
+    }
   }
 
-  const SelectionStream& s = m_content.m_selectionStreams.Get(StreamType::SUBTITLE, index);
-  info.name = s.name;
+  if (GetTeletextSubtitleStreamInfo(subtitleIndex - normalSubtitleCount, info))
+    return;
 
-  if (s.type == StreamType::NONE)
-    info.name += "(Invalid)";
-
-  info.valid = true;
-  info.language = s.language;
-  info.codecName = s.codec;
-  info.codecDesc = s.codecDesc;
-  info.flags = s.flags;
-  info.isExternal = STREAM_SOURCE_MASK(s.source) == STREAM_SOURCE_DEMUX_SUB ||
-                    STREAM_SOURCE_MASK(s.source) == STREAM_SOURCE_TEXT;
+  info = SubtitleStreamInfo{};
 }
 
 void CVideoPlayer::SetSubtitle(int iStream)
@@ -6254,11 +6466,14 @@ void CVideoPlayer::SetSubtitle(int iStream)
 int CVideoPlayer::GetSubtitleCount() const
 {
   std::unique_lock lock(m_content.m_section);
-  return m_content.m_selectionStreams.CountType(StreamType::SUBTITLE);
+  return m_content.m_selectionStreams.CountType(StreamType::SUBTITLE) + GetTeletextSubtitleCount();
 }
 
 int CVideoPlayer::GetSubtitle()
 {
+  if (const int teletextStreamIndex = GetTeletextSubtitleStreamIndex(); teletextStreamIndex >= 0)
+    return teletextStreamIndex;
+
   std::unique_lock lock(m_content.m_section);
   return m_content.m_subtitleIndex;
 }
