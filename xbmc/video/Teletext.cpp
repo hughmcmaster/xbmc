@@ -21,6 +21,7 @@
 #include "filesystem/SpecialProtocol.h"
 #include "input/actions/Action.h"
 #include "input/actions/ActionIDs.h"
+#include "utils/StringUtils.h"
 #include "input/keymaps/keyboard/KeyIDs.h"
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
@@ -30,6 +31,401 @@
 
 using namespace std::chrono_literals;
 using KODI::UTILS::COLOR::Color;
+
+extern unsigned char* aShapes[];
+extern const unsigned short int G0table[6][6 * 16];
+extern const unsigned short int G2table[5][6 * 16];
+extern const unsigned short int nationaltable23[14][2];
+extern const unsigned short int nationaltable40[14];
+extern const unsigned short int nationaltable5b[14][6];
+extern const unsigned short int nationaltable7b[14][4];
+extern const unsigned short int arrowtable[];
+
+namespace
+{
+constexpr double ASS_PLAY_RES_X = 1920.0;
+constexpr double ASS_PLAY_RES_Y = 1080.0;
+constexpr unsigned char SHAPE_CHARACTER = 8;
+
+void AppendUTF8Codepoint(std::string& text, uint32_t codepoint)
+{
+  if (codepoint <= 0x7F)
+  {
+    text.push_back(static_cast<char>(codepoint));
+  }
+  else if (codepoint <= 0x7FF)
+  {
+    text.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
+    text.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+  }
+  else if (codepoint <= 0xFFFF)
+  {
+    text.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
+    text.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+    text.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+  }
+  else
+  {
+    text.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
+    text.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+    text.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+    text.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+  }
+}
+
+void AppendASSText(std::string& text, const std::string& value)
+{
+  for (const char ch : value)
+  {
+    switch (ch)
+    {
+      case '\\':
+        text += "\\\\";
+        break;
+      case '{':
+        text += "\\{";
+        break;
+      case '}':
+        text += "\\}";
+        break;
+      default:
+        text.push_back(ch);
+        break;
+    }
+  }
+}
+
+bool IsTeletextCellVisible(int character, const TextPageAttr_t& attribute)
+{
+  if (character == 0xFF)
+    return false;
+
+  if (character != ' ')
+    return attribute.fg != TXT_ColorTransp;
+
+  return attribute.bg != TXT_ColorTransp && attribute.fg != attribute.bg;
+}
+
+int ResolveTeletextNationalSubset(const TextPageAttr_t& attribute,
+                                  int nationalSubset,
+                                  int nationalSubsetSecondary)
+{
+  int localSubset = nationalSubset;
+
+  if (attribute.setX26)
+    localSubset = NAT_DEFAULT;
+
+  if (attribute.setG0G2 != 0x3f)
+  {
+    switch (attribute.setG0G2)
+    {
+      case 0x20:
+        localSubset = NAT_SC;
+        break;
+      case 0x24:
+        localSubset = NAT_RB;
+        break;
+      case 0x25:
+        localSubset = NAT_UA;
+        break;
+      case 0x37:
+        localSubset = NAT_GR;
+        break;
+      case 0x55:
+        localSubset = NAT_HB;
+        break;
+      case 0x47:
+      case 0x57:
+        localSubset = NAT_AR;
+        break;
+      default:
+        localSubset = CountryConversionTable[attribute.setG0G2 & 0x07];
+        break;
+    }
+  }
+
+  if (attribute.charset == C_G0S)
+    localSubset = nationalSubsetSecondary;
+
+  return localSubset;
+}
+
+uint32_t MapTeletextCharacterToUnicode(int character,
+                                       const TextPageAttr_t& attribute,
+                                       int nationalSubset,
+                                       int nationalSubsetSecondary)
+{
+  if (character == 0xFF)
+    return 0;
+
+  const int localSubset =
+      ResolveTeletextNationalSubset(attribute, nationalSubset, nationalSubsetSecondary);
+
+  uint32_t codepoint = static_cast<uint32_t>(character);
+
+  if ((attribute.charset == C_G1C || attribute.charset == C_G1S) && ((character & 0xA0) == 0x20))
+    return 0;
+
+  if (attribute.charset == C_G3)
+  {
+    if (character < 0x20 || character > 0x7d)
+      return 0x20;
+
+    if (*aShapes[character - 0x20] == SHAPE_CHARACTER)
+    {
+      unsigned char* p = aShapes[character - 0x20];
+      codepoint = static_cast<uint32_t>((*(p + 1) << 8) + (*(p + 2)));
+    }
+    else
+    {
+      return 0;
+    }
+  }
+  else if (attribute.charset >= C_OFFSET_DRCS)
+  {
+    return 0;
+  }
+  else if (attribute.charset == C_G2 && character >= 0x20 && character <= 0x7F)
+  {
+    if (localSubset == NAT_SC || localSubset == NAT_RB || localSubset == NAT_UA)
+      codepoint = G2table[1][character - 0x20];
+    else if (localSubset == NAT_GR)
+      codepoint = G2table[2][character - 0x20];
+    else if (localSubset == NAT_AR)
+      codepoint = G2table[3][character - 0x20];
+    else if (localSubset == NAT_HB)
+      codepoint = G2table[4][character - 0x20];
+    else
+      codepoint = G2table[0][character - 0x20];
+  }
+  else if (localSubset == NAT_SC && character >= 0x20 && character <= 0x7F)
+  {
+    codepoint = G0table[0][character - 0x20];
+  }
+  else if (localSubset == NAT_RB && character >= 0x20 && character <= 0x7F)
+  {
+    codepoint = G0table[1][character - 0x20];
+  }
+  else if (localSubset == NAT_UA && character >= 0x20 && character <= 0x7F)
+  {
+    codepoint = G0table[2][character - 0x20];
+  }
+  else if (localSubset == NAT_GR && character >= 0x20 && character <= 0x7F)
+  {
+    codepoint = G0table[3][character - 0x20];
+  }
+  else if (localSubset == NAT_HB && character >= 0x20 && character <= 0x7F)
+  {
+    codepoint = G0table[4][character - 0x20];
+  }
+  else if (localSubset == NAT_AR && character >= 0x20 && character <= 0x7F)
+  {
+    codepoint = G0table[5][character - 0x20];
+  }
+  else
+  {
+    switch (character)
+    {
+      case 0x23:
+      case 0x24:
+        codepoint = nationaltable23[localSubset][character - 0x23];
+        break;
+      case 0x40:
+        codepoint = nationaltable40[localSubset];
+        break;
+      case 0x5B:
+      case 0x5C:
+      case 0x5D:
+      case 0x5E:
+      case 0x5F:
+      case 0x60:
+        codepoint = nationaltable5b[localSubset][character - 0x5B];
+        break;
+      case 0x7B:
+      case 0x7C:
+      case 0x7D:
+      case 0x7E:
+        codepoint = nationaltable7b[localSubset][character - 0x7B];
+        break;
+      case 0x7F:
+        codepoint = 0x25A0;
+        break;
+      case 0xED:
+      case 0xEE:
+      case 0xEF:
+      case 0xF0:
+      case 0xF1:
+      case 0xF2:
+      case 0xF3:
+      case 0xF4:
+        codepoint = arrowtable[character - 0xED];
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (attribute.diacrit != 0)
+  {
+    uint32_t diacritic = 0;
+    if (localSubset == NAT_SC || localSubset == NAT_RB || localSubset == NAT_UA)
+      diacritic = G2table[1][0x20 + attribute.diacrit];
+    else if (localSubset == NAT_GR)
+      diacritic = G2table[2][0x20 + attribute.diacrit];
+    else if (localSubset == NAT_HB)
+      diacritic = G2table[3][0x20 + attribute.diacrit];
+    else if (localSubset == NAT_AR)
+      diacritic = G2table[4][0x20 + attribute.diacrit];
+    else
+      diacritic = G2table[0][0x20 + attribute.diacrit];
+
+    hb_unicode_funcs_t* ufuncs = hb_unicode_funcs_get_default();
+    hb_codepoint_t composedChar;
+    if (hb_unicode_compose(ufuncs, codepoint, diacritic, &composedChar))
+      codepoint = composedChar;
+  }
+
+  return codepoint;
+}
+
+uint32_t GetTeletextAssColor(int teletextColor)
+{
+  switch (teletextColor)
+  {
+    case TXT_ColorBlack:
+      return 0x000000;
+    case TXT_ColorRed:
+      return 0x1414FC;
+    case TXT_ColorGreen:
+      return 0x24FC24;
+    case TXT_ColorYellow:
+      return 0x24C0FC;
+    case TXT_ColorBlue:
+      return 0xFC0000;
+    case TXT_ColorMagenta:
+      return 0xFC00B0;
+    case TXT_ColorCyan:
+      return 0xFCFC00;
+    case TXT_ColorWhite:
+      return 0xFCFCFC;
+    default:
+      return 0xFCFCFC;
+  }
+}
+
+std::string ConvertSubtitlePageToASSImpl(const unsigned char* pageChar,
+                                         const TextPageAttr_t* pageAtrb,
+                                         int nationalSubset,
+                                         int nationalSubsetSecondary)
+{
+  if (pageChar == nullptr || pageAtrb == nullptr)
+    return {};
+
+  int firstRow{-1};
+  int lastRow{-1};
+  int firstCol{40};
+  int lastCol{-1};
+  for (int row = 0; row < 25; ++row)
+  {
+    for (int col = 0; col < 40; ++col)
+    {
+      const int index = row * 40 + col;
+      if (!IsTeletextCellVisible(pageChar[index], pageAtrb[index]))
+        continue;
+
+      if (firstRow < 0)
+        firstRow = row;
+      lastRow = row;
+      firstCol = std::min(firstCol, col);
+      lastCol = std::max(lastCol, col);
+    }
+  }
+
+  if (firstRow < 0 || lastCol < firstCol)
+    return {};
+
+  const int positionX = static_cast<int>((firstCol * ASS_PLAY_RES_X) / 40.0 + 0.5);
+  const int positionY = static_cast<int>((firstRow * ASS_PLAY_RES_Y) / 25.0 + 0.5);
+  const int fontSize = static_cast<int>(ASS_PLAY_RES_Y / 25.0 + 0.5);
+
+  std::string assText = StringUtils::Format("{{\\an7\\pos({},{})\\q2\\fnmonospace\\fs{}}}",
+                                            positionX, positionY, fontSize);
+
+  int activeFg{-1};
+  int activeScaleX{100};
+  int activeScaleY{100};
+  bool activeUnderline{false};
+
+  for (int row = firstRow; row <= lastRow; ++row)
+  {
+    int rowEnd = lastCol;
+    while (rowEnd >= firstCol)
+    {
+      const int index = row * 40 + rowEnd;
+      if (IsTeletextCellVisible(pageChar[index], pageAtrb[index]))
+        break;
+      --rowEnd;
+    }
+
+    if (rowEnd < firstCol)
+    {
+      if (row != lastRow)
+        assText += "\\N";
+      continue;
+    }
+
+    for (int col = firstCol; col <= rowEnd; ++col)
+    {
+      const int index = row * 40 + col;
+      const TextPageAttr_t& attribute = pageAtrb[index];
+      const int scaleX = attribute.doublew ? 200 : 100;
+      const int scaleY = attribute.doubleh ? 200 : 100;
+      const bool underline = attribute.underline != 0;
+      const bool isVisible = attribute.fg != TXT_ColorTransp && attribute.fg != attribute.bg;
+
+      if (attribute.fg != activeFg || scaleX != activeScaleX || scaleY != activeScaleY ||
+          underline != activeUnderline)
+      {
+        const auto assColor = GetTeletextAssColor(
+            isVisible ? static_cast<int>(attribute.fg) : static_cast<int>(TXT_ColorWhite));
+        assText += StringUtils::Format("{{\\c&H{:06X}&\\fscx{}\\fscy{}\\u{}}}", assColor, scaleX,
+                                       scaleY, underline ? 1 : 0);
+        activeFg = attribute.fg;
+        activeScaleX = scaleX;
+        activeScaleY = scaleY;
+        activeUnderline = underline;
+      }
+
+      if (!isVisible || pageChar[index] == ' ')
+      {
+        assText += "\\h";
+      }
+      else
+      {
+        const uint32_t codepoint = MapTeletextCharacterToUnicode(pageChar[index], attribute,
+                                                                 nationalSubset,
+                                                                 nationalSubsetSecondary);
+        if (codepoint == 0 || codepoint == 0x20)
+          assText += "\\h";
+        else
+        {
+          std::string utf8;
+          AppendUTF8Codepoint(utf8, codepoint);
+          AppendASSText(assText, utf8);
+        }
+      }
+
+      if (attribute.doublew && col < rowEnd)
+        ++col;
+    }
+
+    if (row != lastRow)
+      assText += "\\N";
+  }
+
+  return assText;
+}
+} // namespace
 
 static inline void SDL_memset4(uint32_t* dst, uint32_t val, size_t len)
 {
@@ -77,7 +473,7 @@ static const char *TeletextFont = "special://xbmc/media/Fonts/teletext.ttf";
 #define RowAddress2Row(row) ((row == 40) ? 24 : (row - 40))
 
 // G2 Set as defined in ETS 300 706
-const unsigned short int G2table[5][6*16] =
+extern const unsigned short int G2table[5][6*16] =
 {
   // Latin G2 Supplementary Set
   { 0x0020, 0x00A1, 0x00A2, 0x00A3, 0x0024, 0x00A5, 0x0023, 0x00A7, 0x00A4, 0x2018, 0x201C, 0x00AB, 0x2190, 0x2191, 0x2192, 0x2193,
@@ -285,7 +681,7 @@ unsigned char *aShapes[] =
 
 // G0 Table as defined in ETS 300 706
 // cyrillic G0 Charset (0 = Serbian/Croatian, 1 = Russian/Bulgarian, 2 = Ukrainian)
-const unsigned short int G0table[6][6*16] =
+extern const unsigned short int G0table[6][6*16] =
 {
   // Cyrillic G0 Set - Option 1 - Serbian/Croatian
   { ' ', '!', '\"', '#', '$', '%', '&', '\'', '(' , ')' , '*', '+', ',', '-', '.', '/',
@@ -331,7 +727,7 @@ const unsigned short int G0table[6][6*16] =
     0xFEF0, 0xFECC, 0xFED0, 0xFED4, 0xFED1, 0xFED8, 0xFED5, 0xFED9, 0xFEE0, 0xFEDD, 0xFEE4, 0xFEE1, 0xFEE8, 0xFEE5, 0xFEFB, 0x25A0}
 };
 
-const unsigned short int nationaltable23[14][2] =
+extern const unsigned short int nationaltable23[14][2] =
 {
   { '#',    0x00A4 }, /* 0          */
   { '#',    0x016F }, /* 1  CS/SK   */
@@ -348,7 +744,7 @@ const unsigned short int nationaltable23[14][2] =
   { '#',    0x00A4 }, /* C SV/FI/HU */
   { 0x20A4, 0x011F }, /* D    TR    */
 };
-const unsigned short int nationaltable40[14] =
+extern const unsigned short int nationaltable40[14] =
 {
   '@',    /* 0          */
   0x010D, /* 1  CS/SK   */
@@ -365,7 +761,7 @@ const unsigned short int nationaltable40[14] =
   0x00C9, /* C SV/FI/HU */
   0x0130, /* D    TR    */
 };
-const unsigned short int nationaltable5b[14][6] =
+extern const unsigned short int nationaltable5b[14][6] =
 {
   {    '[',   '\\',    ']',    '^',    '_',    '`' }, /* 0          */
   { 0x0165, 0x017E, 0x00FD, 0x00ED, 0x0159, 0x00E9 }, /* 1  CS/SK   */
@@ -382,7 +778,7 @@ const unsigned short int nationaltable5b[14][6] =
   { 0x00C4, 0x00D6, 0x00C5, 0x00DC,    '_', 0x00E9 }, /* C SV/FI/HU */
   { 0x015E, 0x00D6, 0x00C7, 0x00DC, 0x011E, 0x0131 }, /* D    TR    */
 };
-const unsigned short int nationaltable7b[14][4] =
+extern const unsigned short int nationaltable7b[14][4] =
 {
   { '{',       '|',    '}',    '~' }, /* 0          */
   { 0x00E1, 0x011B, 0x00FA, 0x0161 }, /* 1  CS/SK   */
@@ -399,7 +795,7 @@ const unsigned short int nationaltable7b[14][4] =
   { 0x00E4, 0x00F6, 0x00E5, 0x00FC }, /* C SV/FI/HU */
   { 0x015F, 0x00F6, 0x00E7, 0x00FC }, /* D    TR    */
 };
-const unsigned short int arrowtable[] =
+extern const unsigned short int arrowtable[] =
 {
   8592, 8594, 8593, 8595, 'O', 'K', 8592, 8592
 };
@@ -710,6 +1106,168 @@ bool CTeletextDecoder::InitDecoder()
   m_LastPage              = 0x100;
 
   return true;
+}
+
+std::vector<TextSubtitle_t> CTeletextDecoder::GetSubtitlePages(
+    const std::shared_ptr<TextCacheStruct_t>& txtCache)
+{
+  if (!txtCache)
+    return {};
+
+  std::unique_lock lock(txtCache->m_critSection);
+
+  std::vector<TextSubtitle_t> pages;
+  pages.reserve(std::size(txtCache->SubtitlePages));
+  for (const TextSubtitle_t subtitlePage : txtCache->SubtitlePages)
+  {
+    if (subtitlePage.page != 0)
+      pages.emplace_back(subtitlePage);
+  }
+
+  return pages;
+}
+
+bool CTeletextDecoder::GetSubtitlePageASS(const std::shared_ptr<TextCacheStruct_t>& txtCache,
+                                          int pageNumber,
+                                          int subPageNumber,
+                                          std::string& assText)
+{
+  if (!txtCache)
+    return false;
+
+  unsigned char pageChar[TELETEXT_PAGE_SIZE]{};
+  TextPageAttr_t pageAtrb[TELETEXT_PAGE_SIZE]{};
+  TextPageinfo_t* pageInfo{nullptr};
+  int nationalSubset{NAT_DEFAULT};
+  int nationalSubsetSecondary{NAT_DEFAULT};
+  CTeletextDecoder decoder;
+
+  decoder.m_txtCache = txtCache;
+  decoder.SetColors(DefaultColors, 0, TXT_Color_SIZECOLTABLE);
+
+  if (!DecodeSubtitlePage(txtCache, pageNumber, subPageNumber, decoder.m_RenderInfo.Showl25, false,
+                          decoder.m_RenderInfo.ShowFlof, pageChar, pageAtrb, pageInfo,
+                          nationalSubset, nationalSubsetSecondary, decoder) ||
+      pageInfo == nullptr)
+  {
+    return false;
+  }
+
+  assText = ConvertSubtitlePageToASSImpl(pageChar, pageAtrb, nationalSubset,
+                                         nationalSubsetSecondary);
+  return !assText.empty();
+}
+
+bool CTeletextDecoder::DecodeSubtitlePage(const std::shared_ptr<TextCacheStruct_t>& txtCache,
+                                          int pageNumber,
+                                          int subPageNumber,
+                                          bool showl25,
+                                          bool hintMode,
+                                          bool showflof,
+                                          unsigned char* pageChar,
+                                          TextPageAttr_t* pageAtrb,
+                                          TextPageinfo_t*& pageInfo,
+                                          int& nationalSubset,
+                                          int& nationalSubsetSecondary,
+                                          CTeletextDecoder& decoder)
+{
+  if (!txtCache || pageNumber < 0 ||
+      pageNumber >= static_cast<int>(std::size(txtCache->SubPageTable)) || pageChar == nullptr ||
+      pageAtrb == nullptr)
+    return false;
+
+  std::unique_lock lock(txtCache->m_critSection);
+
+  if (txtCache->SubPageTable[pageNumber] == 0xFF)
+    return false;
+
+  const int resolvedSubPage = subPageNumber >= 0 ? subPageNumber : txtCache->SubPageTable[pageNumber];
+  if (resolvedSubPage < 0 ||
+      resolvedSubPage >= static_cast<int>(std::size(txtCache->astCachetable[pageNumber])) ||
+      txtCache->astCachetable[pageNumber][resolvedSubPage] == nullptr)
+    return false;
+
+  struct CacheRestoreGuard
+  {
+    explicit CacheRestoreGuard(TextCacheStruct_t& cache) : m_cache(cache)
+    {
+      memcpy(fullRowColor, cache.FullRowColor, sizeof(fullRowColor));
+      page = cache.Page;
+      subPage = cache.SubPage;
+      zapSubpageManual = cache.ZapSubpageManual;
+      nationalSubset = cache.NationalSubset;
+      nationalSubsetSecondary = cache.NationalSubsetSecondary;
+      fullScrColor = cache.FullScrColor;
+      pop = cache.pop;
+      gpop = cache.gpop;
+      drcs = cache.drcs;
+      gdrcs = cache.gdrcs;
+      tAPx = cache.tAPx;
+      tAPy = cache.tAPy;
+      colorTable = cache.ColorTable;
+    }
+
+    ~CacheRestoreGuard()
+    {
+      memcpy(m_cache.FullRowColor, fullRowColor, sizeof(fullRowColor));
+      m_cache.Page = page;
+      m_cache.SubPage = subPage;
+      m_cache.ZapSubpageManual = zapSubpageManual;
+      m_cache.NationalSubset = nationalSubset;
+      m_cache.NationalSubsetSecondary = nationalSubsetSecondary;
+      m_cache.FullScrColor = fullScrColor;
+      m_cache.pop = pop;
+      m_cache.gpop = gpop;
+      m_cache.drcs = drcs;
+      m_cache.gdrcs = gdrcs;
+      m_cache.tAPx = tAPx;
+      m_cache.tAPy = tAPy;
+      m_cache.ColorTable = colorTable;
+    }
+
+    TextCacheStruct_t& m_cache;
+    int page{};
+    int subPage{};
+    bool zapSubpageManual{};
+    int nationalSubset{};
+    int nationalSubsetSecondary{};
+    unsigned char fullRowColor[25]{};
+    unsigned char fullScrColor{};
+    short pop{};
+    short gpop{};
+    short drcs{};
+    short gdrcs{};
+    unsigned char tAPx{};
+    unsigned char tAPy{};
+    unsigned short* colorTable{};
+  } restoreGuard(*txtCache);
+
+  txtCache->Page = pageNumber;
+  txtCache->SubPage = resolvedSubPage;
+  txtCache->ZapSubpageManual = true;
+
+  pageInfo = decoder.DecodePageLocked(showl25, pageChar, pageAtrb, hintMode, showflof);
+  nationalSubset = txtCache->NationalSubset;
+  nationalSubsetSecondary = txtCache->NationalSubsetSecondary;
+  if (txtCache->ColorTable)
+    decoder.SetColors(txtCache->ColorTable, 16, 16);
+
+  return pageInfo != nullptr;
+}
+
+std::string CTeletextDecoder::ConvertSubtitlePageToASS(const unsigned char* pageChar,
+                                                       const TextPageAttr_t* pageAtrb)
+{
+  return ConvertSubtitlePageToASSImpl(pageChar, pageAtrb, NAT_DEFAULT, NAT_DEFAULT);
+}
+
+std::string CTeletextDecoder::ConvertSubtitlePageToASS(const unsigned char* pageChar,
+                                                       const TextPageAttr_t* pageAtrb,
+                                                       int nationalSubset,
+                                                       int nationalSubsetSecondary)
+{
+  return ConvertSubtitlePageToASSImpl(pageChar, pageAtrb, nationalSubset,
+                                      nationalSubsetSecondary);
 }
 
 void CTeletextDecoder::EndDecoder()
@@ -2857,13 +3415,21 @@ TextPageinfo_t* CTeletextDecoder::DecodePage(bool showl25,             // 1=deco
                                             bool HintMode,            // 1=show hidden information
                                             bool showflof)            // 1=decode FLOF-line
 {
+  std::unique_lock lock(m_txtCache->m_critSection);
+  return DecodePageLocked(showl25, PageChar, PageAtrb, HintMode, showflof);
+}
+
+TextPageinfo_t* CTeletextDecoder::DecodePageLocked(bool showl25,              // 1=decode Level2.5-graphics
+                                                                  unsigned char* PageChar,   // page buffer, min. 25*40
+                                                                  TextPageAttr_t *PageAtrb,  // attribute buffer, min 25*40
+                                                                  bool HintMode,             // 1=show hidden information
+                                                                  bool showflof)             // 1=decode FLOF-line
+{
   int col;
   int hold, dhset;
   int foreground, background, doubleheight, doublewidth, charset, previous_charset, mosaictype, IgnoreAtBlackBgSubst, concealed, flashmode, boxwin;
   unsigned char held_mosaic, *p;
   TextCachedPage_t *pCachedPage;
-
-  std::unique_lock lock(m_txtCache->m_critSection);
 
   /* copy page to decode buffer */
   if (m_txtCache->SubPageTable[m_txtCache->Page] == 0xff) /* not cached: do nothing */
@@ -4151,4 +4717,3 @@ Color CTeletextDecoder::GetColorRGB(enumTeletextColor ttc)
                 (m_RenderInfo.gn0[index] << 8) | m_RenderInfo.rd0[index];
   return color;
 }
-

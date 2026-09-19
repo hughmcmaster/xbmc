@@ -12,6 +12,10 @@
 #include "guilib/GUITexture.h"
 #include "utils/ColorUtils.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 // stuff for freetype
 #include <ft2build.h>
 
@@ -54,6 +58,18 @@ public:
   bool Changed();
 
   bool InitDecoder();
+  static std::vector<TextSubtitle_t> GetSubtitlePages(
+      const std::shared_ptr<TextCacheStruct_t>& txtCache);
+  static bool GetSubtitlePageASS(const std::shared_ptr<TextCacheStruct_t>& txtCache,
+                                 int pageNumber,
+                                 int subPageNumber,
+                                 std::string& assText);
+  static std::string ConvertSubtitlePageToASS(const unsigned char* pageChar,
+                                              const TextPageAttr_t* pageAtrb);
+  static std::string ConvertSubtitlePageToASS(const unsigned char* pageChar,
+                                              const TextPageAttr_t* pageAtrb,
+                                              int nationalSubset,
+                                              int nationalSubsetSecondary);
   void EndDecoder();
   void RenderPage();
   bool HandleAction(const CAction &action);
@@ -186,6 +202,24 @@ private:
   KODI::UTILS::COLOR::Color GetColorRGB(enumTeletextColor ttc);
 
   static FT_Error MyFaceRequester(FTC_FaceID face_id, FT_Library library, FT_Pointer request_data, FT_Face *aface);
+
+  TextPageinfo_t* DecodePageLocked(bool showl25,
+                                   unsigned char* PageChar,
+                                   TextPageAttr_t* PageAtrb,
+                                   bool HintMode,
+                                   bool showflof);
+  static bool DecodeSubtitlePage(const std::shared_ptr<TextCacheStruct_t>& txtCache,
+                                 int pageNumber,
+                                 int subPageNumber,
+                                 bool showl25,
+                                 bool hintMode,
+                                 bool showflof,
+                                 unsigned char* pageChar,
+                                 TextPageAttr_t* pageAtrb,
+                                 TextPageinfo_t*& pageInfo,
+                                 int& nationalSubset,
+                                 int& nationalSubsetSecondary,
+                                 CTeletextDecoder& decoder);
 
   std::string         m_teletextFont;     /* Path to teletext font */
   int                 m_YOffset;          /* Swap position for Front buffer and Back buffer */
