@@ -1228,8 +1228,21 @@ void CTeletextDecoder::RenderPage()
         m_RenderInfo.SubtitleCache[j] = c;
       }
       c->Valid = true;
-      c->HasDisplayTime = m_txtCache->PageUpdateHasDisplayTime;
-      c->DisplayTime = m_txtCache->PageUpdateDisplayTime;
+      if (m_txtCache->PageUpdateHasDisplayTime)
+      {
+        c->HasDisplayTime = true;
+        c->DisplayTime = m_txtCache->PageUpdateDisplayTime;
+      }
+      else if (hasDisplayClock && m_RenderInfo.SubtitleDelay)
+      {
+        c->HasDisplayTime = true;
+        c->DisplayTime = currentDisplayTime + static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000;
+      }
+      else
+      {
+        c->HasDisplayTime = false;
+        c->DisplayTime = 0;
+      }
 
       if (m_txtCache->SubPageTable[m_txtCache->Page] != 0xFF)
       {
@@ -1239,9 +1252,7 @@ void CTeletextDecoder::RenderPage()
           m_RenderInfo.Boxed = p->boxed;
         }
       }
-      if (!c->HasDisplayTime || !hasDisplayClock ||
-          currentDisplayTime >=
-              c->DisplayTime + static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000)
+      if (!c->HasDisplayTime || !hasDisplayClock || currentDisplayTime >= c->DisplayTime)
       {
         memcpy(m_RenderInfo.PageChar, c->PageChar, 40 * 25);
         memcpy(m_RenderInfo.PageAtrb, c->PageAtrb, 40 * 25 * sizeof(TextPageAttr_t));
@@ -1284,8 +1295,7 @@ void CTeletextDecoder::RenderPage()
       {
         if (subtitleCache && subtitleCache->Valid &&
             (!subtitleCache->HasDisplayTime || !hasDisplayClock ||
-             currentDisplayTime >= subtitleCache->DisplayTime +
-                                       static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000))
+             currentDisplayTime >= subtitleCache->DisplayTime))
         {
           memcpy(m_RenderInfo.PageChar, subtitleCache->PageChar, 40 * 25);
           memcpy(m_RenderInfo.PageAtrb, subtitleCache->PageAtrb, 40 * 25 * sizeof(TextPageAttr_t));
