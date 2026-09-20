@@ -1182,6 +1182,7 @@ void CTeletextDecoder::RenderCatchedPage()
 void CTeletextDecoder::RenderPage()
 {
   const auto appPlayer = CServiceBroker::GetAppComponents().GetComponent<CApplicationPlayer>();
+  const bool hasDisplayClock = appPlayer != nullptr;
   const int64_t currentDisplayTime = appPlayer ? appPlayer->GetTime() : 0;
 
   std::unique_lock lock(m_txtCache->m_critSection);
@@ -1238,7 +1239,7 @@ void CTeletextDecoder::RenderPage()
           m_RenderInfo.Boxed = p->boxed;
         }
       }
-      if (!c->HasDisplayTime ||
+      if (!c->HasDisplayTime || !hasDisplayClock ||
           currentDisplayTime >=
               c->DisplayTime + static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000)
       {
@@ -1282,7 +1283,7 @@ void CTeletextDecoder::RenderPage()
       for (TextSubtitleCache_t* const subtitleCache : m_RenderInfo.SubtitleCache)
       {
         if (subtitleCache && subtitleCache->Valid &&
-            (!subtitleCache->HasDisplayTime ||
+            (!subtitleCache->HasDisplayTime || !hasDisplayClock ||
              currentDisplayTime >= subtitleCache->DisplayTime +
                                        static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000))
         {
