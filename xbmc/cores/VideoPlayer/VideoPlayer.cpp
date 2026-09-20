@@ -1963,7 +1963,7 @@ void CVideoPlayer::ProcessSubData(CDemuxStream* pStream, DemuxPacket* pPacket)
     m_VideoPlayerSubtitle->UpdateOverlayInfo(std::static_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream), LIBDVDNAV_BUTTON_NORMAL);
 }
 
-int CVideoPlayer::DeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset)
+int64_t CVideoPlayer::DeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset)
 {
   if (packet.dispTime > 0)
     return packet.dispTime;
@@ -1980,7 +1980,12 @@ void CVideoPlayer::ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPack
 
   UpdateTimestamps(m_CurrentTeletext, pPacket);
 
-  pPacket->dispTime = DeriveTeletextDisplayTime(*pPacket, m_State.time_offset);
+  pPacket->m_teletextDisplayTime = DeriveTeletextDisplayTime(*pPacket, m_State.time_offset);
+  if (pPacket->m_teletextDisplayTime >= std::numeric_limits<int>::min() &&
+      pPacket->m_teletextDisplayTime <= std::numeric_limits<int>::max())
+  {
+    pPacket->dispTime = static_cast<int>(pPacket->m_teletextDisplayTime);
+  }
 
   bool drop = false;
   if (CheckPlayerInit(m_CurrentTeletext))

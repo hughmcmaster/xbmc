@@ -15,6 +15,7 @@
 #include "settings/AdvancedSettings.h"
 #include "settings/SettingsComponent.h"
 
+#include <limits>
 #include <stdexcept>
 
 #include <gtest/gtest.h>
@@ -77,7 +78,7 @@ public:
     return CalcTimeOrPercentSeekTarget(time, maxTime, direction, ConvertTestSeekStep(step));
   }
 
-  static int InvokeDeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset)
+  static int64_t InvokeDeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset)
   {
     return DeriveTeletextDisplayTime(packet, timeOffset);
   }
@@ -389,4 +390,14 @@ TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimeFallsBackToPtsAndOffset)
 
   EXPECT_EQ(2000,
             CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));
+}
+
+TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimePreservesLargePtsValues)
+{
+  DemuxPacket packet;
+  const int64_t expectedDisplayTime = static_cast<int64_t>(std::numeric_limits<int>::max()) + 1234;
+  packet.pts = DVD_MSEC_TO_TIME(expectedDisplayTime + 10000);
+
+  EXPECT_EQ(expectedDisplayTime,
+            CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_MSEC_TO_TIME(10000)));
 }

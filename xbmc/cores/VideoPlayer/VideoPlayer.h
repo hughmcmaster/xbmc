@@ -412,7 +412,7 @@ protected:
   void UpdateRenderBuffers(int queued, int discard, int free) override;
   void UpdateGuiRender(bool gui) override;
   void UpdateVideoRender(bool video) override;
-  static int DeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset);
+  static int64_t DeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset);
 
   virtual void CreatePlayers();
   void DestroyPlayers();
