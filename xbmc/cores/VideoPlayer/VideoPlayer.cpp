@@ -1968,8 +1968,12 @@ int64_t CVideoPlayer::DeriveTeletextDisplayTime(const DemuxPacket& packet, doubl
   if (packet.m_hasDisplayTime)
     return packet.dispTime;
 
-  if (packet.pts != DVD_NOPTS_VALUE)
-    return DVD_TIME_TO_MSEC(packet.pts + timeOffset);
+  if (packet.pts != DVD_NOPTS_VALUE && timeOffset != DVD_NOPTS_VALUE)
+  {
+    const double adjustedPts = packet.pts + timeOffset;
+    if (adjustedPts != DVD_NOPTS_VALUE)
+      return DVD_TIME_TO_MSEC(adjustedPts);
+  }
 
   return packet.dispTime;
 }

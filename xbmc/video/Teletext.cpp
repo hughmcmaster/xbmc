@@ -1233,6 +1233,7 @@ void CTeletextDecoder::RenderPage()
         m_RenderInfo.SubtitleCache[j] = c;
       }
       c->Valid = true;
+      c->Timestamp = std::chrono::steady_clock::now();
       if (m_txtCache->PageUpdateHasDisplayTime)
       {
         c->HasDisplayTime = true;
@@ -1257,8 +1258,19 @@ void CTeletextDecoder::RenderPage()
           m_RenderInfo.Boxed = p->boxed;
         }
       }
+      const bool delayedByWallClock = !hasDisplayClock && !c->HasDisplayTime && m_RenderInfo.SubtitleDelay;
+      const auto now = delayedByWallClock ? std::chrono::steady_clock::now()
+                                          : std::chrono::steady_clock::time_point{};
+
       if (!c->HasDisplayTime || !hasDisplayClock || currentDisplayTime >= c->DisplayTime)
       {
+        if (delayedByWallClock &&
+            std::chrono::duration_cast<std::chrono::seconds>(now - c->Timestamp).count() <
+                m_RenderInfo.SubtitleDelay)
+        {
+          m_RenderInfo.DelayStarted = true;
+          return;
+        }
         memcpy(m_RenderInfo.PageChar, c->PageChar, 40 * 25);
         memcpy(m_RenderInfo.PageAtrb, c->PageAtrb, 40 * 25 * sizeof(TextPageAttr_t));
         DoRenderPage(StartRow, national_subset_bak);
@@ -1296,12 +1308,22 @@ void CTeletextDecoder::RenderPage()
   {
     if (m_RenderInfo.DelayStarted)
     {
+      const auto now = std::chrono::steady_clock::now();
       for (TextSubtitleCache_t* const subtitleCache : m_RenderInfo.SubtitleCache)
       {
-        if (subtitleCache && subtitleCache->Valid &&
-            (!subtitleCache->HasDisplayTime || !hasDisplayClock ||
-             currentDisplayTime >= subtitleCache->DisplayTime))
+        if (subtitleCache && subtitleCache->Valid)
         {
+          if (subtitleCache->HasDisplayTime)
+          {
+            if (hasDisplayClock && currentDisplayTime < subtitleCache->DisplayTime)
+              continue;
+          }
+          else if (!hasDisplayClock && m_RenderInfo.SubtitleDelay &&
+                   std::chrono::duration_cast<std::chrono::seconds>(now - subtitleCache->Timestamp)
+                           .count() < m_RenderInfo.SubtitleDelay)
+          {
+            continue;
+          }
           memcpy(m_RenderInfo.PageChar, subtitleCache->PageChar, 40 * 25);
           memcpy(m_RenderInfo.PageAtrb, subtitleCache->PageAtrb, 40 * 25 * sizeof(TextPageAttr_t));
           DoRenderPage(StartRow, national_subset_bak);
