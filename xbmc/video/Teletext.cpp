@@ -1238,6 +1238,17 @@ void CTeletextDecoder::RenderPage()
           m_RenderInfo.Boxed = p->boxed;
         }
       }
+      if (!c->HasDisplayTime ||
+          currentDisplayTime >=
+              c->DisplayTime + static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000)
+      {
+        memcpy(m_RenderInfo.PageChar, c->PageChar, 40 * 25);
+        memcpy(m_RenderInfo.PageAtrb, c->PageAtrb, 40 * 25 * sizeof(TextPageAttr_t));
+        DoRenderPage(StartRow, national_subset_bak);
+        c->Valid = false;
+        m_RenderInfo.DelayStarted = false;
+        return;
+      }
       m_RenderInfo.DelayStarted = true;
       return;
     }
