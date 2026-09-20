@@ -1686,10 +1686,18 @@ void CVideoPlayer::Process()
     UpdatePlayState(200);
 
     // make sure we run subtitle process here
-    const double subtitlePts =
-        m_clock.GetClock() + m_State.time_offset - m_VideoPlayerVideo->GetSubtitleDelay();
+    const double subtitleDelay = m_VideoPlayerVideo->GetSubtitleDelay();
+    const double subtitlePts = m_clock.GetClock() + m_State.time_offset - subtitleDelay;
     m_VideoPlayerSubtitle->Process(subtitlePts, m_State.time_offset);
-    ProcessTeletextSubtitles(subtitlePts);
+
+    double teletextSubtitlePts = subtitlePts;
+    if (m_CurrentAudio.id >= 0)
+    {
+      const double audioPts = m_VideoPlayerAudio->GetCurrentPts();
+      if (audioPts != DVD_NOPTS_VALUE)
+        teletextSubtitlePts = audioPts - subtitleDelay;
+    }
+    ProcessTeletextSubtitles(teletextSubtitlePts);
 
     // tell demuxer if we want to fill buffers
     if (m_demuxerSpeed != DVD_PLAYSPEED_PAUSE)

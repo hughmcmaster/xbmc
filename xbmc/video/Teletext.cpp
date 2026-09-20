@@ -344,17 +344,18 @@ std::string ConvertSubtitlePageToASSImpl(const unsigned char* pageChar,
   if (firstRow < 0 || lastCol < firstCol)
     return {};
 
-  const int positionX = static_cast<int>((firstCol * ASS_PLAY_RES_X) / 40.0 + 0.5);
-  const int positionY = static_cast<int>((firstRow * ASS_PLAY_RES_Y) / 25.0 + 0.5);
+  const int positionX = static_cast<int>(ASS_PLAY_RES_X / 2.0 + 0.5);
+  const int positionY = static_cast<int>((ASS_PLAY_RES_Y * 9.0) / 10.0 + 0.5);
   const int fontSize = static_cast<int>(ASS_PLAY_RES_Y / 25.0 + 0.5);
 
-  std::string assText = StringUtils::Format("{{\\an7\\pos({},{})\\q2\\fnmonospace\\fs{}}}",
+  std::string assText = StringUtils::Format("{{\\an2\\pos({},{})\\q2\\fnmonospace\\fs{}}}",
                                             positionX, positionY, fontSize);
 
   int activeFg{-1};
   int activeScaleX{100};
   int activeScaleY{100};
   bool activeUnderline{false};
+  bool hasPreviousRow{false};
 
   for (int row = firstRow; row <= lastRow; ++row)
   {
@@ -368,11 +369,10 @@ std::string ConvertSubtitlePageToASSImpl(const unsigned char* pageChar,
     }
 
     if (rowEnd < firstCol)
-    {
-      if (row != lastRow)
-        assText += "\\N";
       continue;
-    }
+
+    if (hasPreviousRow)
+      assText += "\\h\\h";
 
     for (int col = firstCol; col <= rowEnd; ++col)
     {
@@ -418,9 +418,7 @@ std::string ConvertSubtitlePageToASSImpl(const unsigned char* pageChar,
       if (attribute.doublew && col < rowEnd)
         ++col;
     }
-
-    if (row != lastRow)
-      assText += "\\N";
+    hasPreviousRow = true;
   }
 
   return assText;

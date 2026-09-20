@@ -42,7 +42,7 @@ TEST(TestTeletext, GetSubtitlePagesReturnsCachedPages)
   EXPECT_EQ(NAT_DE, pages[1].language);
 }
 
-TEST(TestTeletext, ConvertSubtitlePageToASSEscapesAndBreaksLines)
+TEST(TestTeletext, ConvertSubtitlePageToASSEscapesAndConcatenatesRows)
 {
   unsigned char pageChar[TELETEXT_PAGE_SIZE];
   TextPageAttr_t pageAtrb[TELETEXT_PAGE_SIZE];
@@ -61,9 +61,10 @@ TEST(TestTeletext, ConvertSubtitlePageToASSEscapesAndBreaksLines)
 
   const std::string assText = CTeletextDecoder::ConvertSubtitlePageToASS(pageChar, pageAtrb);
 
-  EXPECT_NE(std::string::npos, assText.find("{\\an7\\pos(96,216)\\q2\\fnmonospace\\fs43}"));
+  EXPECT_EQ(0u, assText.rfind("{\\an2\\pos(960,972)\\q2\\fnmonospace\\fs43}", 0));
   EXPECT_NE(std::string::npos, assText.find("A\\{\\\\\\}"));
-  EXPECT_NE(std::string::npos, assText.find("\\NB"));
+  EXPECT_EQ(std::string::npos, assText.find("\\N"));
+  EXPECT_NE(std::string::npos, assText.find("\\h\\hB"));
 }
 
 TEST(TestTeletext, ConvertSubtitlePageToASSPreservesColorsAndDoubleHeight)
