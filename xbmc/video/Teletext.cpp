@@ -1199,7 +1199,8 @@ void CTeletextDecoder::RenderPage()
 
     /* reset update flag */
     m_txtCache->PageUpdate = false;
-    if (isSubtitlePage && (m_txtCache->PageUpdateHasDisplayTime || m_RenderInfo.SubtitleDelay))
+    if (m_RenderInfo.Boxed ||
+        (isSubtitlePage && (m_txtCache->PageUpdateHasDisplayTime || m_RenderInfo.SubtitleDelay)))
     {
       TextSubtitleCache_t* c = NULL;
       int j = -1;
