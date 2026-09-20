@@ -1262,7 +1262,8 @@ void CTeletextDecoder::RenderPage()
       const auto now = delayedByWallClock ? std::chrono::steady_clock::now()
                                           : std::chrono::steady_clock::time_point{};
 
-      if (!c->HasDisplayTime || !hasDisplayClock || currentDisplayTime >= c->DisplayTime)
+      if ((!c->HasDisplayTime || currentDisplayTime >= c->DisplayTime) &&
+          (hasDisplayClock || !c->HasDisplayTime))
       {
         if (delayedByWallClock &&
             std::chrono::duration_cast<std::chrono::seconds>(now - c->Timestamp).count() <
@@ -1315,7 +1316,7 @@ void CTeletextDecoder::RenderPage()
         {
           if (subtitleCache->HasDisplayTime)
           {
-            if (hasDisplayClock && currentDisplayTime < subtitleCache->DisplayTime)
+            if (!hasDisplayClock || currentDisplayTime < subtitleCache->DisplayTime)
               continue;
           }
           else if (!hasDisplayClock && m_RenderInfo.SubtitleDelay &&
