@@ -392,6 +392,14 @@ TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimeFallsBackToPtsAndOffset)
             CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));
 }
 
+TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimePreservesZeroAtPlaybackStart)
+{
+  DemuxPacket packet;
+  packet.pts = DVD_SEC_TO_TIME(10);
+
+  EXPECT_EQ(0, CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));
+}
+
 TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimePreservesLargePtsValues)
 {
   DemuxPacket packet;
