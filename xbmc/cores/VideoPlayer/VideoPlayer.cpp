@@ -1965,11 +1965,8 @@ void CVideoPlayer::ProcessSubData(CDemuxStream* pStream, DemuxPacket* pPacket)
 
 int64_t CVideoPlayer::DeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset)
 {
-  if (packet.dispTime > 0)
+  if (packet.m_hasDisplayTime)
     return packet.dispTime;
-
-  if (packet.dispTime == 0 && packet.pts != DVD_NOPTS_VALUE && packet.pts + timeOffset <= 0)
-    return 0;
 
   if (packet.pts != DVD_NOPTS_VALUE)
     return DVD_TIME_TO_MSEC(packet.pts + timeOffset);
@@ -1984,10 +1981,16 @@ void CVideoPlayer::ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPack
   UpdateTimestamps(m_CurrentTeletext, pPacket);
 
   pPacket->m_teletextDisplayTime = DeriveTeletextDisplayTime(*pPacket, m_State.time_offset);
-  if (pPacket->m_teletextDisplayTime >= std::numeric_limits<int>::min() &&
+  if (!pPacket->m_hasDisplayTime &&
+      pPacket->m_teletextDisplayTime >= std::numeric_limits<int>::min() &&
       pPacket->m_teletextDisplayTime <= std::numeric_limits<int>::max())
   {
     pPacket->dispTime = static_cast<int>(pPacket->m_teletextDisplayTime);
+  }
+  if (pPacket->m_teletextDisplayTime >= std::numeric_limits<int>::min() &&
+      pPacket->m_teletextDisplayTime <= std::numeric_limits<int>::max())
+  {
+    pPacket->m_hasDisplayTime = true;
   }
 
   bool drop = false;

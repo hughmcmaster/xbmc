@@ -378,6 +378,7 @@ TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimeUsesExistingDisplayTime)
 {
   DemuxPacket packet;
   packet.dispTime = 3210;
+  packet.m_hasDisplayTime = true;
   packet.pts = DVD_SEC_TO_TIME(12);
 
   EXPECT_EQ(3210, CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));
@@ -395,6 +396,8 @@ TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimeFallsBackToPtsAndOffset)
 TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimePreservesZeroAtPlaybackStart)
 {
   DemuxPacket packet;
+  packet.dispTime = 0;
+  packet.m_hasDisplayTime = true;
   packet.pts = DVD_SEC_TO_TIME(10);
 
   EXPECT_EQ(0, CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));

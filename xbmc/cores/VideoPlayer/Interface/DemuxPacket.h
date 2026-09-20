@@ -45,6 +45,7 @@ extern "C"
 
     //! @brief PTS offset correction applied to the PTS and DTS.
     double m_ptsOffsetCorrection{0};
+    bool m_hasDisplayTime{false};
     int64_t m_teletextDisplayTime{-1};
   };
 
