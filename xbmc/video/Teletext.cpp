@@ -1189,6 +1189,10 @@ void CTeletextDecoder::RenderPage()
 
   int StartRow = 0;
   int national_subset_bak = m_txtCache->NationalSubset;
+  const int64_t subtitleDelayMs =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::seconds(m_RenderInfo.SubtitleDelay))
+          .count();
 
   if (m_txtCache->PageUpdate)
     m_updateTexture = true;
@@ -1236,7 +1240,7 @@ void CTeletextDecoder::RenderPage()
       else if (hasDisplayClock && m_RenderInfo.SubtitleDelay)
       {
         c->HasDisplayTime = true;
-        c->DisplayTime = currentDisplayTime + static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000;
+        c->DisplayTime = currentDisplayTime + subtitleDelayMs;
       }
       else
       {
