@@ -627,8 +627,7 @@ void CDVDTeletextData::Process()
             {
               SavePage(m_TXTCache->CurrentPage[magazine], m_TXTCache->CurrentSubPage[magazine], pagedata[magazine]);
               m_TXTCache->PageUpdate = true;
-              m_TXTCache->PageUpdateHasDisplayTime =
-                  pPacket->dispTime > 0 || pPacket->pts != DVD_NOPTS_VALUE;
+              m_TXTCache->PageUpdateHasDisplayTime = pPacket->dispTime > 0;
               m_TXTCache->PageUpdateDisplayTime = pPacket->dispTime;
 //              doupdate = 0;
               if (!m_TXTCache->ZapSubpageManual)
