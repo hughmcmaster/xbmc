@@ -11,6 +11,7 @@
 #include "threads/CriticalSection.h"
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 
 #define FLOFSIZE 4
@@ -384,7 +385,8 @@ typedef struct
 typedef struct
 {
   bool Valid;
-  std::chrono::time_point<std::chrono::steady_clock> Timestamp;
+  bool HasDisplayTime;
+  int64_t DisplayTime;
   unsigned char  PageChar[TELETEXT_PAGE_SIZE];
   TextPageAttr_t PageAtrb[TELETEXT_PAGE_SIZE];
 } TextSubtitleCache_t;
@@ -408,6 +410,8 @@ typedef struct TextCacheStruct_t
   int               Page;
   int               SubPage;
   bool              PageUpdate;
+  bool              PageUpdateHasDisplayTime;
+  int64_t           PageUpdateDisplayTime;
   int               NationalSubset;
   int               NationalSubsetSecondary;
   bool              ZapSubpageManual;

@@ -1181,6 +1181,9 @@ void CTeletextDecoder::RenderCatchedPage()
 
 void CTeletextDecoder::RenderPage()
 {
+  const auto appPlayer = CServiceBroker::GetAppComponents().GetComponent<CApplicationPlayer>();
+  const int64_t currentDisplayTime = appPlayer ? appPlayer->GetTime() : 0;
+
   std::unique_lock lock(m_txtCache->m_critSection);
 
   int StartRow = 0;
@@ -1192,9 +1195,11 @@ void CTeletextDecoder::RenderPage()
   /* update page or timestring */
   if (m_txtCache->PageUpdate && m_txtCache->PageReceiving != m_txtCache->Page && m_RenderInfo.InputCounter == 2)
   {
+    const bool isSubtitlePage = IsSubtitlePage(m_txtCache->Page);
+
     /* reset update flag */
     m_txtCache->PageUpdate = false;
-    if (m_RenderInfo.Boxed && m_RenderInfo.SubtitleDelay)
+    if (isSubtitlePage && (m_txtCache->PageUpdateHasDisplayTime || m_RenderInfo.SubtitleDelay))
     {
       TextSubtitleCache_t* c = NULL;
       int j = -1;
@@ -1221,7 +1226,8 @@ void CTeletextDecoder::RenderPage()
         m_RenderInfo.SubtitleCache[j] = c;
       }
       c->Valid = true;
-      c->Timestamp = std::chrono::steady_clock::now();
+      c->HasDisplayTime = m_txtCache->PageUpdateHasDisplayTime;
+      c->DisplayTime = m_txtCache->PageUpdateDisplayTime;
 
       if (m_txtCache->SubPageTable[m_txtCache->Page] != 0xFF)
       {
@@ -1261,12 +1267,12 @@ void CTeletextDecoder::RenderPage()
   {
     if (m_RenderInfo.DelayStarted)
     {
-      auto now = std::chrono::steady_clock::now();
       for (TextSubtitleCache_t* const subtitleCache : m_RenderInfo.SubtitleCache)
       {
         if (subtitleCache && subtitleCache->Valid &&
-            std::chrono::duration_cast<std::chrono::seconds>(now - subtitleCache->Timestamp)
-                    .count() >= m_RenderInfo.SubtitleDelay)
+            (!subtitleCache->HasDisplayTime ||
+             currentDisplayTime >= subtitleCache->DisplayTime +
+                                       static_cast<int64_t>(m_RenderInfo.SubtitleDelay) * 1000))
         {
           memcpy(m_RenderInfo.PageChar, subtitleCache->PageChar, 40 * 25);
           memcpy(m_RenderInfo.PageAtrb, subtitleCache->PageAtrb, 40 * 25 * sizeof(TextPageAttr_t));
@@ -4151,4 +4157,3 @@ Color CTeletextDecoder::GetColorRGB(enumTeletextColor ttc)
                 (m_RenderInfo.gn0[index] << 8) | m_RenderInfo.rd0[index];
   return color;
 }
-

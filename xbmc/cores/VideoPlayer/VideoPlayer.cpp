@@ -1969,6 +1969,9 @@ void CVideoPlayer::ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPack
 
   UpdateTimestamps(m_CurrentTeletext, pPacket);
 
+  if (pPacket->dispTime <= 0 && pPacket->pts != DVD_NOPTS_VALUE)
+    pPacket->dispTime = DVD_TIME_TO_MSEC(pPacket->pts + m_State.time_offset);
+
   bool drop = false;
   if (CheckPlayerInit(m_CurrentTeletext))
     drop = true;
