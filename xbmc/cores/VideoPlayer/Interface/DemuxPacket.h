@@ -11,6 +11,8 @@
 #include "TimingConstants.h"
 #include "addons/kodi-dev-kit/include/kodi/c-api/addon-instance/inputstream/demux_packet.h"
 
+#include <cstdint>
+
 #define DMX_SPECIALID_STREAMINFO DEMUX_SPECIALID_STREAMINFO
 #define DMX_SPECIALID_STREAMCHANGE DEMUX_SPECIALID_STREAMCHANGE
 
@@ -43,6 +45,8 @@ extern "C"
 
     //! @brief PTS offset correction applied to the PTS and DTS.
     double m_ptsOffsetCorrection{0};
+    bool m_hasDisplayTime{false};
+    int64_t m_teletextDisplayTime{-1};
   };
 
 #ifdef __cplusplus

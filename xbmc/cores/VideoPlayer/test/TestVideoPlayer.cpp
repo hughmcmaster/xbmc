@@ -9,10 +9,13 @@
 #include "ServiceBroker.h"
 #include "cores/IPlayerCallback.h"
 #include "cores/VideoPlayer/VideoPlayer.h"
+#include "cores/VideoPlayer/Interface/DemuxPacket.h"
+#include "cores/VideoPlayer/Interface/TimingConstants.h"
 #include "jobs/JobManager.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/SettingsComponent.h"
 
+#include <limits>
 #include <stdexcept>
 
 #include <gtest/gtest.h>
@@ -73,6 +76,11 @@ public:
                                                    TestSeekStep step)
   {
     return CalcTimeOrPercentSeekTarget(time, maxTime, direction, ConvertTestSeekStep(step));
+  }
+
+  static int64_t InvokeDeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset)
+  {
+    return DeriveTeletextDisplayTime(packet, timeOffset);
   }
 };
 
@@ -364,4 +372,43 @@ TEST_F(TestVideoPlayer, CalcTimeOrPercentSeekTargetSmooth)
   EXPECT_EQ(advancedSettings->m_videoTimeSeekBackward * 1000,
             CTestVideoPlayer::InvokeCalcTimeOrPercentSeekTarget(0, maxTime, Direction::BACKWARD,
                                                                 TestSeekStep::NORMAL));
+}
+
+TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimeUsesExistingDisplayTime)
+{
+  DemuxPacket packet;
+  packet.dispTime = 3210;
+  packet.m_hasDisplayTime = true;
+  packet.pts = DVD_SEC_TO_TIME(12);
+
+  EXPECT_EQ(3210, CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));
+}
+
+TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimeFallsBackToPtsAndOffset)
+{
+  DemuxPacket packet;
+  packet.pts = DVD_SEC_TO_TIME(12);
+
+  EXPECT_EQ(2000,
+            CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));
+}
+
+TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimePreservesZeroAtPlaybackStart)
+{
+  DemuxPacket packet;
+  packet.dispTime = 0;
+  packet.m_hasDisplayTime = true;
+  packet.pts = DVD_SEC_TO_TIME(10);
+
+  EXPECT_EQ(0, CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_SEC_TO_TIME(10)));
+}
+
+TEST_F(TestVideoPlayer, DeriveTeletextDisplayTimePreservesLargePtsValues)
+{
+  DemuxPacket packet;
+  const int64_t expectedDisplayTime = static_cast<int64_t>(std::numeric_limits<int>::max()) + 1234;
+  packet.pts = DVD_MSEC_TO_TIME(expectedDisplayTime + 10000);
+
+  EXPECT_EQ(expectedDisplayTime,
+            CTestVideoPlayer::InvokeDeriveTeletextDisplayTime(packet, -DVD_MSEC_TO_TIME(10000)));
 }
