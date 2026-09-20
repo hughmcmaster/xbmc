@@ -1987,11 +1987,6 @@ void CVideoPlayer::ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPack
   {
     pPacket->dispTime = static_cast<int>(pPacket->m_teletextDisplayTime);
   }
-  if (pPacket->m_teletextDisplayTime >= std::numeric_limits<int>::min() &&
-      pPacket->m_teletextDisplayTime <= std::numeric_limits<int>::max())
-  {
-    pPacket->m_hasDisplayTime = true;
-  }
 
   bool drop = false;
   if (CheckPlayerInit(m_CurrentTeletext))
