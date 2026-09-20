@@ -45,6 +45,8 @@ namespace
 {
 constexpr double ASS_PLAY_RES_X = 1920.0;
 constexpr double ASS_PLAY_RES_Y = 1080.0;
+constexpr double ASS_SUBTITLE_CENTER_X = ASS_PLAY_RES_X / 2.0;
+constexpr double ASS_SUBTITLE_BOTTOM_Y = ASS_PLAY_RES_Y * 0.9;
 constexpr unsigned char SHAPE_CHARACTER = 8;
 
 void AppendUTF8Codepoint(std::string& text, uint32_t codepoint)
@@ -344,8 +346,8 @@ std::string ConvertSubtitlePageToASSImpl(const unsigned char* pageChar,
   if (firstRow < 0 || lastCol < firstCol)
     return {};
 
-  const int positionX = static_cast<int>(ASS_PLAY_RES_X / 2.0 + 0.5);
-  const int positionY = static_cast<int>((ASS_PLAY_RES_Y * 9.0) / 10.0 + 0.5);
+  const int positionX = static_cast<int>(ASS_SUBTITLE_CENTER_X + 0.5);
+  const int positionY = static_cast<int>(ASS_SUBTITLE_BOTTOM_Y + 0.5);
   const int fontSize = static_cast<int>(ASS_PLAY_RES_Y / 25.0 + 0.5);
 
   std::string assText = StringUtils::Format("{{\\an2\\pos({},{})\\q2\\fnmonospace\\fs{}}}",
