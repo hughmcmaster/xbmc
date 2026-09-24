@@ -1974,11 +1974,29 @@ void CVideoPlayer::ProcessSubData(CDemuxStream* pStream, DemuxPacket* pPacket)
     m_VideoPlayerSubtitle->UpdateOverlayInfo(std::static_pointer_cast<CDVDInputStreamNavigator>(m_pInputStream), LIBDVDNAV_BUTTON_NORMAL);
 }
 
+int CVideoPlayer::DeriveTeletextDisplayTime(const DemuxPacket& packet, double timeOffset)
+{
+  if (packet.m_hasDisplayTime)
+    return packet.dispTime;
+
+  if (packet.pts != DVD_NOPTS_VALUE && timeOffset != DVD_NOPTS_VALUE)
+  {
+    const double adjustedPts = packet.pts + timeOffset;
+    if (adjustedPts != DVD_NOPTS_VALUE)
+      return DVD_TIME_TO_MSEC(adjustedPts);
+  }
+
+  return packet.dispTime;
+}
+
 void CVideoPlayer::ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPacket)
 {
   CheckStreamChanges(m_CurrentTeletext, pStream);
 
   UpdateTimestamps(m_CurrentTeletext, pPacket);
+
+  if (!pPacket->m_hasDisplayTime)
+    pPacket->dispTime = DeriveTeletextDisplayTime(*pPacket, m_State.time_offset);
 
   bool drop = false;
   if (CheckPlayerInit(m_CurrentTeletext))
