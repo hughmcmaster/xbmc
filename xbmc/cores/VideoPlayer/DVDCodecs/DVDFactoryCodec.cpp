@@ -254,7 +254,8 @@ std::unique_ptr<CDVDOverlayCodec> CDVDFactoryCodec::CreateOverlayCodec(CDVDStrea
   {
     case AV_CODEC_ID_TEXT:
     {
-      if (hint.source == STREAM_SOURCE_VIDEOMUX)
+      // Live captions are shown until replaced rather than for a fixed duration
+      if (hint.source == STREAM_SOURCE_VIDEOMUX || hint.source == STREAM_SOURCE_TELETEXT)
         pCodec = std::make_unique<CDVDOverlayCodecCCText>();
       else
         pCodec = std::make_unique<CDVDOverlayCodecText>();

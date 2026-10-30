@@ -12,6 +12,7 @@
 #include "DVDDemuxers/DVDDemux.h"
 #include "DVDDemuxers/DVDDemuxCC.h"
 #include "DVDDemuxers/DVDDemuxFFmpeg.h"
+#include "DVDDemuxers/DVDDemuxTeletext.h"
 #include "DVDDemuxers/DVDDemuxUtils.h"
 #include "DVDDemuxers/DVDDemuxVobsub.h"
 #include "DVDDemuxers/DVDFactoryDemuxer.h"
@@ -648,6 +649,8 @@ void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input,
       source = Source(STREAM_SOURCE_DEMUX, filename);
     else if (!filename2.empty())
       source = Source(STREAM_SOURCE_DEMUX_SUB, filename);
+    else if (dynamic_cast<CDVDDemuxTeletext*>(demuxer))
+      source = Source(STREAM_SOURCE_TELETEXT, filename);
     else
       source = Source(STREAM_SOURCE_VIDEOMUX, filename);
 
@@ -1354,6 +1357,15 @@ bool CVideoPlayer::IsValidStream(const CCurrentStream& stream)
       return false;
     return true;
   }
+  if (source == STREAM_SOURCE_TELETEXT)
+  {
+    if (!m_pTeletextSubDemuxer)
+      return false;
+    CDemuxStream* st = m_pTeletextSubDemuxer->GetStream(stream.id);
+    if (!st || st->disabled || st->type != stream.type)
+      return false;
+    return true;
+  }
 
   return false;
 }
@@ -1862,6 +1874,37 @@ void CVideoPlayer::Process()
           else
             CDVDDemuxUtils::FreeDemuxPacket(pkt);
         }
+      }
+    }
+
+    // extract subtitle pages from the teletext stream
+    if (m_pTeletextSubDemuxer && CheckIsCurrent(m_CurrentTeletext, pStream, pPacket))
+    {
+      bool first = true;
+      while (!m_bAbortRequest)
+      {
+        DemuxPacket* pkt = m_pTeletextSubDemuxer->Read(first ? pPacket : nullptr);
+        first = false;
+
+        // pages are discovered from the stream, not only from the PMT
+        if (m_pTeletextSubDemuxer->GetNrOfStreams() !=
+            m_SelectionStreams.CountTypeOfSource(StreamType::SUBTITLE, STREAM_SOURCE_TELETEXT))
+        {
+          m_SelectionStreams.Clear(StreamType::SUBTITLE, STREAM_SOURCE_TELETEXT);
+          m_SelectionStreams.Update(NULL, m_pTeletextSubDemuxer.get(), "");
+          UpdateContent();
+          OpenDefaultStreams(false);
+        }
+
+        if (!pkt)
+          break;
+
+        CDemuxStream* pSubStream = m_pTeletextSubDemuxer->GetStream(pkt->iStreamId);
+        if (pSubStream && m_CurrentSubtitle.id == pkt->iStreamId &&
+            m_CurrentSubtitle.source == STREAM_SOURCE_TELETEXT)
+          ProcessSubData(pSubStream, pkt);
+        else
+          CDVDDemuxUtils::FreeDemuxPacket(pkt);
       }
     }
 
@@ -3050,6 +3093,7 @@ void CVideoPlayer::OnExit()
   m_pSubtitleDemuxer.reset();
   m_subtitleDemuxerMap.clear();
   m_pCCDemuxer.reset();
+  m_pTeletextSubDemuxer.reset();
   if (m_pInputStream.use_count() > 1)
     throw std::runtime_error("m_pInputStream reference count is greater than 1");
   m_pInputStream.reset();
@@ -3122,6 +3166,7 @@ void CVideoPlayer::HandleMessages()
       m_pSubtitleDemuxer.reset();
       m_subtitleDemuxerMap.clear();
       m_pCCDemuxer.reset();
+      m_pTeletextSubDemuxer.reset();
       if (m_pInputStream.use_count() > 1)
         throw std::runtime_error("m_pInputStream reference count is greater than 1");
       m_pInputStream.reset();
@@ -4333,6 +4378,17 @@ bool CVideoPlayer::OpenStream(CCurrentStream& current, int64_t demuxerId, int iS
 
     hint.Assign(*stream, false);
   }
+  else if (STREAM_SOURCE_MASK(source) == STREAM_SOURCE_TELETEXT)
+  {
+    if (!m_pTeletextSubDemuxer)
+      return false;
+
+    stream = m_pTeletextSubDemuxer->GetStream(iStream);
+    if (!stream || stream->disabled)
+      return false;
+
+    hint.Assign(*stream, false);
+  }
 
   bool res;
   switch(current.type)
@@ -4632,9 +4688,23 @@ bool CVideoPlayer::OpenTeletextStream(CDVDStreamInfo& hint)
   {
     if (!player->OpenStream(hint))
       return false;
+
+    CloseTeletextSubtitles();
+    m_pTeletextSubDemuxer = std::make_unique<CDVDDemuxTeletext>(hint.teletextSubtitlePages);
   }
 
   return true;
+}
+
+void CVideoPlayer::CloseTeletextSubtitles()
+{
+  if (!m_pTeletextSubDemuxer)
+    return;
+
+  if (m_CurrentSubtitle.source == STREAM_SOURCE_TELETEXT)
+    CloseStream(m_CurrentSubtitle, false);
+  m_SelectionStreams.Clear(StreamType::SUBTITLE, STREAM_SOURCE_TELETEXT);
+  m_pTeletextSubDemuxer.reset();
 }
 
 bool CVideoPlayer::OpenRadioRDSStream(CDVDStreamInfo& hint)
@@ -4700,6 +4770,9 @@ bool CVideoPlayer::CloseStream(CCurrentStream& current, bool bWaitForBuffers)
     player->CloseStream(bWaitForBuffers);
   }
 
+  if (current.type == StreamType::TELETEXT)
+    CloseTeletextSubtitles();
+
   current.Clear();
   return true;
 }
@@ -4761,6 +4834,8 @@ void CVideoPlayer::FlushBuffers(double pts, bool accurate, bool sync)
   m_VideoPlayerTeletext->Flush();
   m_VideoPlayerRadioRDS->Flush();
   m_VideoPlayerAudioID3->Flush();
+  if (m_pTeletextSubDemuxer)
+    m_pTeletextSubDemuxer->Flush();
 
   // drop queued pre-seek frames to avoid starving RenderManager's buffer pool so post-seek overlays/subtitles do not get dropped
   if (sync)

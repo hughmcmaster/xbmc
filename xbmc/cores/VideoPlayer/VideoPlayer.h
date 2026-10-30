@@ -113,6 +113,7 @@ class CDemuxStreamVideo;
 class CDemuxStreamAudio;
 class CStreamInfo;
 class CDVDDemuxCC;
+class CDVDDemuxTeletext;
 class CVideoPlayer;
 
 #define DVDSTATE_NORMAL           0x00000001 // normal dvd state
@@ -435,6 +436,7 @@ protected:
   bool OpenVideoStream(CDVDStreamInfo& hint, bool reset = true);
   bool OpenSubtitleStream(const CDVDStreamInfo& hint);
   bool OpenTeletextStream(CDVDStreamInfo& hint);
+  void CloseTeletextSubtitles();
   bool OpenRadioRDSStream(CDVDStreamInfo& hint);
   bool OpenAudioID3Stream(CDVDStreamInfo& hint);
 
@@ -654,6 +656,7 @@ protected:
   std::shared_ptr<CDVDDemux> m_pSubtitleDemuxer;
   std::unordered_map<int64_t, std::shared_ptr<CDVDDemux>> m_subtitleDemuxerMap;
   std::unique_ptr<CDVDDemuxCC> m_pCCDemuxer;
+  std::unique_ptr<CDVDDemuxTeletext> m_pTeletextSubDemuxer;
 
   CRenderManager m_renderManager;
 

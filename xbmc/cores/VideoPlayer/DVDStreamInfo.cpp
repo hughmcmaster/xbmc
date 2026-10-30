@@ -43,6 +43,7 @@ void CDVDStreamInfo::Clear()
   dvd = false;
 
   extradata = {};
+  teletextSubtitlePages.clear();
 
   cryptoSession = nullptr;
   externalInterfaces = nullptr;
@@ -168,6 +169,10 @@ bool CDVDStreamInfo::Equal(const CDVDStreamInfo& right, int compare)
 
   // SUBTITLE
 
+  // TELETEXT
+  if (teletextSubtitlePages != right.teletextSubtitlePages)
+    return false;
+
   // Crypto
   if ((cryptoSession == nullptr) != (right.cryptoSession == nullptr))
     return false;
@@ -247,6 +252,9 @@ void CDVDStreamInfo::Assign(const CDVDStreamInfo& right, bool withextradata)
   channellayout = right.channellayout;
 
   // SUBTITLE
+
+  // TELETEXT
+  teletextSubtitlePages = right.teletextSubtitlePages;
 }
 
 void CDVDStreamInfo::Assign(const CDemuxStream& right, bool withextradata)
@@ -308,5 +316,10 @@ void CDVDStreamInfo::Assign(const CDemuxStream& right, bool withextradata)
   }
   else if (right.type == StreamType::SUBTITLE)
   {
+  }
+  else if (right.type == StreamType::TELETEXT)
+  {
+    const CDemuxStreamTeletext* stream = static_cast<const CDemuxStreamTeletext*>(&right);
+    teletextSubtitlePages = stream->subtitlePages;
   }
 }

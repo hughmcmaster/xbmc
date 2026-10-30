@@ -10,6 +10,8 @@
 
 #include "DVDDemuxers/DVDDemux.h"
 
+#include <vector>
+
 extern "C"
 {
 #include <libavcodec/avcodec.h>
@@ -93,6 +95,9 @@ public:
   uint64_t channellayout;
 
   // SUBTITLE
+
+  // TELETEXT
+  std::vector<TeletextSubtitlePage> teletextSubtitlePages;
 
   // CODEC EXTRADATA
   FFmpegExtraData extradata; // extra data for codec to use

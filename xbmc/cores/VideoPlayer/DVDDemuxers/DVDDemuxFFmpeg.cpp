@@ -8,6 +8,7 @@
 
 #include "DVDDemuxFFmpeg.h"
 
+#include "DVDDemuxTeletext.h"
 #include "DVDDemuxUtils.h"
 #include "DVDInputStreams/DVDInputStream.h"
 #ifdef HAVE_LIBBLURAY
@@ -2200,6 +2201,16 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
     {
       stream->extraData =
           FFmpegExtraData(pStream->codecpar->extradata, pStream->codecpar->extradata_size);
+    }
+
+    if (stream->type == StreamType::TELETEXT && stream->extraData)
+    {
+      // ffmpeg stores the teletext descriptor as extradata and joins the entry languages
+      // with commas in the same order
+      static_cast<CDemuxStreamTeletext*>(stream)->subtitlePages =
+          CDVDDemuxTeletext::ParseDescriptor(stream->extraData.GetData(),
+                                             stream->extraData.GetSize(),
+                                             langTag ? langTag->value : "");
     }
 
 #ifdef HAVE_LIBBLURAY
