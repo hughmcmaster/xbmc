@@ -2201,6 +2201,29 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
           FFmpegExtraData(pStream->codecpar->extradata, pStream->codecpar->extradata_size);
     }
 
+    if (stream->type == StreamType::TELETEXT && langTag)
+    {
+      // FFmpeg splits the DVB teletext_descriptor into a comma separated language list and
+      // 2 bytes (teletext_type/magazine, page) per entry in extradata. Rebuild the 5 byte
+      // descriptor entries so the teletext subtitle pages can be matched to their language.
+      const std::vector<std::string> languages = StringUtils::Split(langTag->value, ',');
+      const size_t entries = pStream->codecpar->extradata_size / 2;
+      if (entries > 0 && entries == languages.size())
+      {
+        FFmpegExtraData descriptor(entries * 5);
+        uint8_t* dst = descriptor.GetData();
+        for (size_t i = 0; i < entries; i++)
+        {
+          const std::string& lang = languages[i];
+          for (size_t c = 0; c < 3; c++)
+            *dst++ = c < lang.size() ? static_cast<uint8_t>(lang[c]) : ' ';
+          *dst++ = pStream->codecpar->extradata[i * 2];
+          *dst++ = pStream->codecpar->extradata[i * 2 + 1];
+        }
+        stream->extraData = std::move(descriptor);
+      }
+    }
+
 #ifdef HAVE_LIBBLURAY
     if (m_pInput->IsStreamType(DVDSTREAM_TYPE_BLURAY))
     {
