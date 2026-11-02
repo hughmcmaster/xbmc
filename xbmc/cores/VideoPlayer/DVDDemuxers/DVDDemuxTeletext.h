@@ -108,6 +108,7 @@ private:
   std::array<bool, 8> m_magCharsetValid{}; // M/29/0 received
   std::array<uint8_t, 8> m_magDefaultCharset{};
   std::array<uint8_t, 8> m_magSecondCharset{};
+  bool m_serial{false}; // header control bit C11: pages of all magazines are sent in sequence
   std::vector<std::unique_ptr<Page>> m_pages;
   std::deque<DemuxPacket*> m_pending;
   KODI::LANGUAGE::CLanguageTag m_language;

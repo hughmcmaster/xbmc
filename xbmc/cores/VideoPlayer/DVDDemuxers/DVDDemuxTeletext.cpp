@@ -42,6 +42,8 @@ constexpr size_t TELETEXT_DESCRIPTOR_ENTRY_SIZE = 5;
 constexpr uint8_t ATTR_ALPHA_COLOUR_MAX = 0x07;
 constexpr uint8_t ATTR_END_BOX = 0x0A;
 constexpr uint8_t ATTR_START_BOX = 0x0B;
+constexpr uint8_t ATTR_DOUBLE_HEIGHT = 0x0D;
+constexpr uint8_t ATTR_DOUBLE_SIZE = 0x0F;
 constexpr uint8_t ATTR_MOSAIC_COLOUR_MIN = 0x10;
 constexpr uint8_t ATTR_MOSAIC_COLOUR_MAX = 0x17;
 constexpr uint8_t ATTR_CONCEAL = 0x18;
@@ -143,6 +145,7 @@ void CDVDDemuxTeletext::Flush()
 
 void CDVDDemuxTeletext::ResetMagazines()
 {
+  m_serial = false;
   for (Magazine& mag : m_magazines)
   {
     mag = Magazine();
@@ -259,8 +262,15 @@ void CDVDDemuxTeletext::DecodeLine(const uint8_t* row, double pts, bool ptsValid
 
   if (packetNumber == 0)
   {
-    // a new header terminates the page previously received in this magazine
-    DeliverPage(mag);
+    // a new header terminates the page previously received in this magazine, or in every
+    // magazine when the service uses serial transmission (C11)
+    if (m_serial)
+    {
+      for (Magazine& other : m_magazines)
+        DeliverPage(other);
+    }
+    else
+      DeliverPage(mag);
 
     const int units = dehamming[row[2]];
     const int tens = dehamming[row[3]];
@@ -294,6 +304,7 @@ void CDVDDemuxTeletext::DecodeLine(const uint8_t* row, double pts, bool ptsValid
 
     mag.page = page;
     mag.subtitle = (c6 & 0x08) != 0; // C6: subtitle
+    m_serial = (national & 0x01) != 0; // C11: magazine serial
     // C12..C14 national option bits are transmitted in reverse order (ETS 300 706 table 32)
     mag.national = ((national >> 3) & 0x01) | ((national >> 1) & 0x02) | ((national << 1) & 0x04);
     mag.pts = pts;
@@ -398,8 +409,16 @@ std::string CDVDDemuxTeletext::PageToText(const uint8_t* page,
 {
   std::string text;
 
+  bool skipRow = false;
   for (int row = 0; row < ROWS; row++)
   {
+    // the row below double height text repeats its lower half and must not be read again
+    if (skipRow)
+    {
+      skipRow = false;
+      continue;
+    }
+
     const uint8_t* line = page + row * COLUMNS;
     std::string rowText;
     bool box = false;
@@ -429,6 +448,8 @@ std::string CDVDDemuxTeletext::PageToText(const uint8_t* page,
           box = false;
         else if (ch == ATTR_CONCEAL)
           conceal = true;
+        else if (ch == ATTR_DOUBLE_HEIGHT || ch == ATTR_DOUBLE_SIZE)
+          skipRow = true;
         else if (ch == ATTR_ESC)
           national = national == nationalSubset ? secondNationalSubset : nationalSubset;
 

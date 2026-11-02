@@ -61,7 +61,8 @@ class TeletextPes
 {
 public:
   // Header packet X/0 for page (magazine << 8 | bcd page), with control bits
-  TeletextPes& Header(int page, bool subtitle, bool erase = false, int national = 0)
+  TeletextPes& Header(
+      int page, bool subtitle, bool erase = false, int national = 0, bool serial = false)
   {
     std::array<uint8_t, ROW_BYTES> row{};
     const int magazine = (page >> 8) & 0x07; // 8 is transmitted as 0
@@ -76,7 +77,7 @@ public:
     row[8] = Hamming84(0); // C7..C10
     // C12..C14 are transmitted reversed
     const int nat = ((national & 0x01) << 3) | ((national & 0x02) << 1) | ((national & 0x04) >> 1);
-    row[9] = Hamming84(nat);
+    row[9] = Hamming84(nat | (serial ? 0x01 : 0)); // C11 serial, C12..C14 national
     for (int i = 10; i < ROW_BYTES; i++)
       row[i] = OddParity(' ');
     return Add(row);
@@ -173,6 +174,19 @@ TEST(TestDVDDemuxTeletext, PageToTextSkipsMosaicsAndConcealed)
 {
   const auto page = MakePage({{20, "\x0B\x0B\x17!#$\x07text\x18 hidden"}});
   EXPECT_EQ(CDVDDemuxTeletext::PageToText(page.data(), NAT_DEFAULT, NAT_DEFAULT, false), "text");
+}
+
+TEST(TestDVDDemuxTeletext, PageToTextSkipsRowBelowDoubleHeight)
+{
+  // double height text on row 20 is repeated by the renderer on row 21, which carries the same
+  // characters; the row after that is independent text again
+  const auto page = MakePage({{20, "\x0B\x0B\x0D"
+                                   "Big\x0A"},
+                              {21, "\x0B\x0B\x0D"
+                                   "Big\x0A"},
+                              {22, "\x0B\x0B\x0FHuge\x0A"},
+                              {23, "\x0B\x0Bsmall\x0A"}});
+  EXPECT_EQ(CDVDDemuxTeletext::PageToText(page.data(), NAT_DEFAULT, NAT_DEFAULT), "Big\nHuge");
 }
 
 TEST(TestDVDDemuxTeletext, PageToTextUsesNationalSubset)
@@ -274,6 +288,26 @@ TEST(TestDVDDemuxTeletext, NonSubtitlePagesAreIgnored)
   pes.Header(0x100, false, true).Row(1, 5, "\x0B\x0BNews\x0A").Header(0x100, false, true);
   EXPECT_TRUE(Feed(demuxer, pes, 1000.0).empty());
   EXPECT_EQ(demuxer.GetNrOfStreams(), 0);
+}
+
+TEST(TestDVDDemuxTeletext, SerialTransmissionCompletesPageOnAnyHeader)
+{
+  CDVDDemuxTeletext demuxer(nullptr, 0, CLanguageTag::Undetermined());
+
+  // in serial mode (C11) the header of another magazine completes the subtitle page
+  TeletextPes pes;
+  pes.Header(0x888, true, true, 0, true)
+      .Row(8, 20, "\x0B\x0BSerial\x0A")
+      .Header(0x100, false, true, 0, true);
+  std::vector<Subtitle> texts = Feed(demuxer, pes, 1000.0);
+  ASSERT_EQ(texts.size(), 1U);
+  EXPECT_EQ(texts[0].text, "Serial");
+
+  // in parallel mode only a header of the same magazine does
+  CDVDDemuxTeletext parallel(nullptr, 0, CLanguageTag::Undetermined());
+  TeletextPes pes2;
+  pes2.Header(0x888, true, true).Row(8, 20, "\x0B\x0BParallel\x0A").Header(0x100, false, true);
+  EXPECT_TRUE(Feed(parallel, pes2, 1000.0).empty());
 }
 
 TEST(TestDVDDemuxTeletext, HeaderNationalBitsSelectCharset)
