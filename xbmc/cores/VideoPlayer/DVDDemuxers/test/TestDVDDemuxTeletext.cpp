@@ -213,7 +213,7 @@ TEST(TestDVDDemuxTeletext, StreamsFromDescriptor)
   ASSERT_NE(first, nullptr);
   EXPECT_EQ(first->type, StreamType::SUBTITLE);
   EXPECT_EQ(first->codec, AV_CODEC_ID_TEXT);
-  EXPECT_EQ(first->source, STREAM_SOURCE_TELETEXTMUX);
+  EXPECT_EQ(first->source, STREAM_SOURCE_TELETEXT);
   EXPECT_EQ(first->language.AsBcp47(), "de");
   EXPECT_EQ(first->flags, StreamFlags::FLAG_NONE);
 

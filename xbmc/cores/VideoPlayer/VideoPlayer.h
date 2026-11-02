@@ -437,6 +437,7 @@ protected:
   bool OpenVideoStream(CDVDStreamInfo& hint, bool reset = true);
   bool OpenSubtitleStream(const CDVDStreamInfo& hint);
   bool OpenTeletextStream(CDVDStreamInfo& hint, CDemuxStream* stream, bool reset);
+  void CloseTeletextSubtitles();
   bool OpenRadioRDSStream(CDVDStreamInfo& hint);
   bool OpenAudioID3Stream(CDVDStreamInfo& hint);
 

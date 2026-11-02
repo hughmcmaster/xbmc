@@ -255,7 +255,7 @@ std::unique_ptr<CDVDOverlayCodec> CDVDFactoryCodec::CreateOverlayCodec(CDVDStrea
     case AV_CODEC_ID_TEXT:
     {
       // captions and teletext subtitles carry no stop time: each packet replaces the previous one
-      if (hint.source == STREAM_SOURCE_VIDEOMUX || hint.source == STREAM_SOURCE_TELETEXTMUX)
+      if (hint.source == STREAM_SOURCE_VIDEOMUX || hint.source == STREAM_SOURCE_TELETEXT)
         pCodec = std::make_unique<CDVDOverlayCodecCCText>();
       else
         pCodec = std::make_unique<CDVDOverlayCodecText>();

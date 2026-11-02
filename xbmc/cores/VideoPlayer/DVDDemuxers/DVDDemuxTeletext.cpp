@@ -194,7 +194,7 @@ CDVDDemuxTeletext::Page& CDVDDemuxTeletext::AddPage(int page,
   auto entry = std::make_unique<Page>();
   entry->page = page;
   entry->stream.uniqueId = page;
-  entry->stream.source = STREAM_SOURCE_TELETEXTMUX;
+  entry->stream.source = STREAM_SOURCE_TELETEXT;
   entry->stream.codec = AV_CODEC_ID_TEXT;
   entry->stream.language = language;
   entry->stream.flags = flags;
