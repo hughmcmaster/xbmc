@@ -111,6 +111,7 @@ class CDemuxStreamVideo;
 class CDemuxStreamAudio;
 class CStreamInfo;
 class CDVDDemuxCC;
+class CDVDDemuxTeletext;
 class CVideoPlayer;
 
 #define DVDSTATE_NORMAL           0x00000001 // normal dvd state
@@ -248,6 +249,10 @@ public:
   void Update(const std::shared_ptr<CDVDInputStream>& input,
               CDVDDemux* demuxer,
               const std::string& filename2);
+  /*! \brief Add the streams of a pseudo demuxer that derives streams from another stream
+   *  (closed captions from video, subtitles from teletext).
+   */
+  void UpdateMuxed(CDVDDemux* demuxer, StreamSource source);
 
   std::vector<SelectionStream> Get(StreamType type);
   template<typename Compare> std::vector<SelectionStream> Get(StreamType type, Compare compare)
@@ -431,7 +436,7 @@ protected:
   bool OpenAudioStream(CDVDStreamInfo& hint, bool reset = true);
   bool OpenVideoStream(CDVDStreamInfo& hint, bool reset = true);
   bool OpenSubtitleStream(const CDVDStreamInfo& hint);
-  bool OpenTeletextStream(CDVDStreamInfo& hint);
+  bool OpenTeletextStream(CDVDStreamInfo& hint, CDemuxStream* stream, bool reset);
   bool OpenRadioRDSStream(CDVDStreamInfo& hint);
   bool OpenAudioID3Stream(CDVDStreamInfo& hint);
 
@@ -447,6 +452,7 @@ protected:
   void ProcessVideoData(CDemuxStream* pStream, DemuxPacket* pPacket);
   void ProcessSubData(CDemuxStream* pStream, DemuxPacket* pPacket);
   void ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPacket);
+  void ProcessTeletextSubtitles(DemuxPacket* pPacket);
   void ProcessRadioRDSData(CDemuxStream* pStream, DemuxPacket* pPacket);
   void ProcessAudioID3Data(CDemuxStream* pStream, DemuxPacket* pPacket);
 
@@ -655,6 +661,7 @@ protected:
   std::shared_ptr<CDVDDemux> m_pSubtitleDemuxer;
   std::unordered_map<int64_t, std::shared_ptr<CDVDDemux>> m_subtitleDemuxerMap;
   std::unique_ptr<CDVDDemuxCC> m_pCCDemuxer;
+  std::unique_ptr<CDVDDemuxTeletext> m_pTeletextDemuxer;
 
   CRenderManager m_renderManager;
 
