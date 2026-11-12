@@ -18,6 +18,7 @@ set(SOURCES Bookmark.cpp
             PlayerControllerActions.cpp
             SetInfoTag.cpp
             Teletext.cpp
+            TeletextCharset.cpp
             VideoDatabase.cpp
             VideoDatabaseContentGeometry.cpp
             VideoDatabaseDDL.cpp
@@ -59,6 +60,7 @@ set(HEADERS Bookmark.h
             PlayerControllerActions.h
             SetInfoTag.h
             Teletext.h
+            TeletextCharset.h
             TeletextDefines.h
             VideoDatabase.h
             VideoDatabaseColumns.h
