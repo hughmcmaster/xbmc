@@ -661,7 +661,10 @@ void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input,
     else if (!filename2.empty())
       source = Source(STREAM_SOURCE_DEMUX_SUB, filename);
     else
-      source = Source(STREAM_SOURCE_VIDEOMUX, filename);
+    {
+      UpdateMuxed(demuxer, STREAM_SOURCE_VIDEOMUX);
+      return;
+    }
 
     for (auto stream : demuxer->GetStreams())
     {
@@ -720,6 +723,33 @@ void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input,
 void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input, CDVDDemux* demuxer)
 {
   Update(input, demuxer, "");
+}
+
+void CSelectionStreams::UpdateMuxed(CDVDDemux* demuxer, StreamSource source)
+{
+  for (auto stream : demuxer->GetStreams())
+  {
+    if (stream->type == StreamType::NONE)
+      continue;
+    stream->source = source;
+
+    SelectionStream s;
+    s.source = source;
+    s.type = stream->type;
+    s.id = stream->uniqueId;
+    s.demuxerId = stream->demuxerId;
+    s.language = stream->language;
+    s.flags = stream->flags;
+    s.name = stream->GetStreamName();
+    s.codecId = stream->codec;
+    s.channels = 0;
+    if (stream->type == StreamType::SUBTITLE)
+      s.codecDesc = static_cast<CDemuxStreamSubtitle*>(stream)->GetStreamType();
+    Update(s);
+  }
+  CServiceBroker::GetDataCacheCore().SignalAudioInfoChange();
+  CServiceBroker::GetDataCacheCore().SignalVideoInfoChange();
+  CServiceBroker::GetDataCacheCore().SignalSubtitleInfoChange();
 }
 
 int CSelectionStreams::CountTypeOfSource(StreamType type, StreamSource source) const

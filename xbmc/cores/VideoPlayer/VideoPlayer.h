@@ -256,6 +256,10 @@ public:
   void Update(const std::shared_ptr<CDVDInputStream>& input,
               CDVDDemux* demuxer,
               const std::string& filename2);
+  /*! \brief Add the streams of a pseudo demuxer that derives streams from another stream
+   *  (closed captions from video, subtitles from teletext).
+   */
+  void UpdateMuxed(CDVDDemux* demuxer, StreamSource source);
 
   std::vector<SelectionStream> Get(StreamType type);
   template<typename Compare> std::vector<SelectionStream> Get(StreamType type, Compare compare)
