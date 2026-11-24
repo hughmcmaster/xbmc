@@ -55,7 +55,7 @@
 #include "dialogs/GUIDialogKaiToast.h"
 #include "events/EventLog.h"
 #include "events/NotificationEvent.h"
-#include "language/LangInfo.h"
+#include "language/LanguageLoader.h"
 #ifdef HAVE_LIBBLURAY
 #include "filesystem/BlurayDiscCache.h"
 #endif
@@ -110,6 +110,8 @@
 #include "network/upnp/UPnP.h"
 #endif
 #include "jobs/JobManager.h"
+#include "language/Language.h"
+#include "language/i18n/LanguageTable.h"
 #include "peripherals/Peripherals.h"
 #include "pictures/SlideShowDelegator.h"
 #include "platform/Environment.h"
@@ -140,7 +142,6 @@
 #include "utils/CPUInfo.h"
 #include "utils/CharsetConverter.h"
 #include "utils/FileExtensionProvider.h"
-#include "utils/LangCodeExpander.h"
 #include "utils/RegExp.h"
 #include "utils/Screenshot.h"
 #include "utils/StringUtils.h"
@@ -1617,7 +1618,8 @@ bool CApplication::Cleanup()
     //  are still allocated.
 
     CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Clear();
-    CLangCodeExpander::Clear();
+    KODI::LANGUAGE::I18N::CLanguageTable::GetInstance().Reset();
+    KODI::LANGUAGE::CLanguage::GetInstance().SetPack(nullptr);
     g_charsetConverter.clear();
     g_directoryCache.Clear();
     //CServiceBroker::GetInputManager().ClearKeymaps(); //! @todo
@@ -1703,6 +1705,20 @@ bool CApplication::Stop(int exitCode)
   const auto appPlayer = GetComponent<CApplicationPlayer>();
   appPlayer->ClosePlayer();
 
+  // the stop message is no longer processed, so notify its listeners here
+  static constexpr std::array playbackStopped{GUI_MSG_PLAYBACK_STOPPED, 0};
+  if (CGUIComponent* gui = CServiceBroker::GetGUI();
+      gui && gui->GetWindowManager().RemoveThreadMessageByMessageIds(playbackStopped.data()) > 0)
+  {
+    CVariant data(CVariant::VariantTypeObject);
+    data["end"] = false;
+    CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Player, "OnStop",
+                                                       CurrentFileItemPtr(), data);
+#ifdef HAS_PYTHON
+    CServiceBroker::GetXBPython().OnPlayBackStopped();
+#endif
+  }
+
   {
     // close inbound port
     CServiceBroker::UnregisterAppPort();
@@ -1763,8 +1779,6 @@ bool CApplication::Stop(int exitCode)
     m_ExitCode = exitCode;
     CLog::Log(LOGINFO, "Stopping all");
 
-    CScriptInvocationManager::GetInstance().NotifyAllScriptsAborting();
-
     // Stop scanning before the job manager is cancelled below
     // otherwise scans underway are not stopped
     CMusicLibraryQueue::GetInstance().CancelAllJobs();
@@ -1794,6 +1808,8 @@ bool CApplication::Stop(int exitCode)
 #if defined(TARGET_POSIX) && defined(HAS_FILESYSTEM_SMB)
     smb.Deinit();
 #endif
+
+    CScriptInvocationManager::GetInstance().NotifyAllScriptsAborting();
 
     // Stop services before unloading Python
     CServiceBroker::GetServiceAddons().Stop();
@@ -2748,16 +2764,7 @@ bool CApplication::SetLanguage(const std::string &strLanguage)
 
 bool CApplication::LoadLanguage(bool reload)
 {
-  // load the configured language
-  if (!g_langInfo.SetLanguage("", reload))
-    return false;
-
-  // set the proper audio and subtitle languages
-  const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
-  g_langInfo.SetAudioLanguage(settings->GetString(CSettings::SETTING_LOCALE_AUDIOLANGUAGE));
-  g_langInfo.SetSubtitleLanguage(settings->GetString(CSettings::SETTING_LOCALE_SUBTITLELANGUAGE));
-
-  return true;
+  return KODI::LANGUAGE::CLanguageLoader::GetInstance().Load("", reload);
 }
 
 void CApplication::SetLoggingIn(bool switchingProfiles)

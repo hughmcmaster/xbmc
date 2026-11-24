@@ -18,6 +18,7 @@ set(SOURCES Bookmark.cpp
             PlayerControllerActions.cpp
             SetInfoTag.cpp
             Teletext.cpp
+            TeletextCharset.cpp
             VideoDatabase.cpp
             VideoDatabaseContentGeometry.cpp
             VideoDatabaseDDL.cpp
@@ -26,7 +27,6 @@ set(SOURCES Bookmark.cpp
             VideoEmbeddedImageFileLoader.cpp
             VideoFileItemClassify.cpp
             VideoGeneratedImageFileLoader.cpp
-            VideoInfoDownloader.cpp
             VideoInfoScanner.cpp
             VideoInfoScannerArt.cpp
             VideoInfoScannerExtras.cpp
@@ -60,6 +60,7 @@ set(HEADERS Bookmark.h
             PlayerControllerActions.h
             SetInfoTag.h
             Teletext.h
+            TeletextCharset.h
             TeletextDefines.h
             VideoDatabase.h
             VideoDatabaseColumns.h
@@ -70,7 +71,6 @@ set(HEADERS Bookmark.h
             VideoEmbeddedImageFileLoader.h
             VideoFileItemClassify.h
             VideoGeneratedImageFileLoader.h
-            VideoInfoDownloader.h
             VideoInfoScanner.h
             VideoInfoScannerArt.h
             VideoInfoScannerExtras.h

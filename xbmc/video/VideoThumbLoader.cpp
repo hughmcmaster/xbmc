@@ -24,6 +24,7 @@
 #include "music/MusicDatabase.h"
 #include "music/tags/MusicInfoTag.h"
 #include "network/NetworkFileItemClassify.h"
+#include "playlists/PlayListFileItemClassify.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/SettingUtils.h"
 #include "settings/Settings.h"
@@ -798,7 +799,8 @@ std::string CVideoThumbLoader::GetLocalArt(const CFileItem &item, const std::str
                                        static_cast<int>(CacheBufferMode::ALL)
                                  : false;
 
-  if (item.IsFolder() && (NETWORK::IsStreamedFilesystem(item) || cacheAll))
+  if (item.IsFolder() && !VIDEO::IsVideoDb(item) && !PLAYLIST::IsSmartPlayList(item) &&
+      (NETWORK::IsStreamedFilesystem(item) || cacheAll))
   {
     CFileItemList items; // Dummy list
     CDirectory::GetDirectory(item.GetPath(), items, "", DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_READ_CACHE | DIR_FLAG_NO_FILE_INFO);
@@ -869,14 +871,14 @@ void CVideoThumbLoader::DetectAndAddMissingItemData(CFileItem &item)
       std::string index = std::to_string(i);
       item.SetProperty("AudioChannels." + index, details.GetAudioChannels(i));
       item.SetProperty("AudioCodec."    + index, details.GetAudioCodec(i).c_str());
-      item.SetProperty("AudioLanguage." + index, details.GetAudioLanguage(i).c_str());
+      item.SetProperty("AudioLanguage." + index, details.GetAudioLanguage(i).ToString());
     }
 
     // add subtitle language properties
     for (int i = 1; i <= details.GetSubtitleStreamCount(); i++)
     {
       std::string index = std::to_string(i);
-      item.SetProperty("SubtitleLanguage." + index, details.GetSubtitleLanguage(i).c_str());
+      item.SetProperty("SubtitleLanguage." + index, details.GetSubtitleLanguage(i).ToString());
     }
   }
 

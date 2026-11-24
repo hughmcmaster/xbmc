@@ -15,7 +15,7 @@
 #include "addons/IAddon.h"
 #include "addons/addoninfo/AddonType.h"
 #include "filesystem/Directory.h"
-#include "language/LangInfo.h"
+#include "language/Language.h"
 #include "resources/LocalizeStrings.h"
 #include "resources/ResourcesComponent.h"
 #include "utils/DefaultArt.h"
@@ -40,7 +40,7 @@ struct TypeMapping
 };
 
 // clang-format off
-static constexpr const std::array<TypeMapping, 42> types =
+static constexpr const std::array<TypeMapping, 41> types =
   {{
    {"unknown",                           "", AddonType::UNKNOWN,                 0, AddonInstanceSupport::SUPPORT_NONE,      "" },
    {"xbmc.metadata.scraper.albums",      "", AddonType::SCRAPER_ALBUMS,      24016, AddonInstanceSupport::SUPPORT_NONE,      KODI::ART::DEFAULT::ADDON_ALBUM_INFO },
@@ -48,7 +48,6 @@ static constexpr const std::array<TypeMapping, 42> types =
    {"xbmc.metadata.scraper.movies",      "", AddonType::SCRAPER_MOVIES,      24007, AddonInstanceSupport::SUPPORT_NONE,      KODI::ART::DEFAULT::ADDON_MOVIE_INFO },
    {"xbmc.metadata.scraper.musicvideos", "", AddonType::SCRAPER_MUSICVIDEOS, 24015, AddonInstanceSupport::SUPPORT_NONE,      KODI::ART::DEFAULT::ADDON_MUSIC_VIDEO_INFO },
    {"xbmc.metadata.scraper.tvshows",     "", AddonType::SCRAPER_TVSHOWS,     24014, AddonInstanceSupport::SUPPORT_NONE,      KODI::ART::DEFAULT::ADDON_TV_INFO },
-   {"xbmc.metadata.scraper.library",     "", AddonType::SCRAPER_LIBRARY,     24083, AddonInstanceSupport::SUPPORT_NONE,      KODI::ART::DEFAULT::ADDON_INFO_LIBRARY },
    {"xbmc.ui.screensaver",               "", AddonType::SCREENSAVER,         24008, AddonInstanceSupport::SUPPORT_OPTIONAL,  KODI::ART::DEFAULT::ADDON_SCREENSAVER },
    {"xbmc.player.musicviz",              "", AddonType::VISUALIZATION,       24010, AddonInstanceSupport::SUPPORT_OPTIONAL,  KODI::ART::DEFAULT::ADDON_VISUALIZATION },
    {"xbmc.python.pluginsource",          "", AddonType::PLUGIN,              24005, AddonInstanceSupport::SUPPORT_NONE,      "" },
@@ -259,21 +258,57 @@ const CAddonVersion& CAddonInfo::DependencyVersion(const std::string& dependency
   return emptyVersion;
 }
 
-const std::string& CAddonInfo::GetTranslatedText(const CLocale::LocalizedStringsMap& locales) const
+namespace
+{
+//! Higher is better; -1 where the candidate names a different language altogether
+int MatchRank(const KODI::LANGUAGE::CLanguageTag& wanted,
+              const KODI::LANGUAGE::CLanguageTag& candidate)
+{
+  if (!wanted.Matches(candidate))
+    return -1;
+
+  // A translation for the same place is the better match, so two tags naming no place are not
+  // a better match than any other - only two naming the same one are
+  const KODI::LANGUAGE::CTerritory territory{wanted.GetTerritory()};
+
+  return territory != KODI::LANGUAGE::CTerritory{} && territory == candidate.GetTerritory() ? 1 : 0;
+}
+} // namespace
+
+const std::string& CAddonInfo::GetTranslatedText(const LocalizedStringsMap& locales) const
 {
   if (locales.size() == 1)
     return locales.begin()->second;
   else if (locales.empty())
     return StringUtils::Empty;
 
-  // find the language from the list that matches the current locale best
-  std::string matchingLanguage = g_langInfo.GetLocale().FindBestMatch(locales);
-  if (matchingLanguage.empty())
-    matchingLanguage = KODI_ADDON_DEFAULT_LANGUAGE_CODE;
+  static const KODI::LANGUAGE::CLanguageTag fallback{
+      KODI::LANGUAGE::CLanguageTag::Parse(KODI_ADDON_DEFAULT_LANGUAGE_CODE)};
+  const KODI::LANGUAGE::CLanguageTag& wanted{KODI::LANGUAGE::CLanguage::GetInstance().UI()};
+  const std::string* bestText{nullptr};
+  const std::string* fallbackText{nullptr};
+  int bestRank = -1;
 
-  auto const& translatedValue = locales.find(matchingLanguage);
-  if (translatedValue != locales.end())
-    return translatedValue->second;
+  for (const auto& [locale, text] : locales)
+  {
+    const KODI::LANGUAGE::CLanguageTag candidate{KODI::LANGUAGE::CLanguageTag::Parse(locale)};
+    if (wanted == candidate)
+      return text;
+
+    if (candidate == fallback)
+      fallbackText = &text;
+
+    if (const int rank = MatchRank(wanted, candidate); rank > bestRank)
+    {
+      bestRank = rank;
+      bestText = &text;
+    }
+  }
+
+  if (bestText)
+    return *bestText;
+  if (fallbackText)
+    return *fallbackText;
   return StringUtils::Empty;
 }
 

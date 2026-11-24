@@ -10,6 +10,7 @@
 #include "XBDateTime.h"
 #include "interfaces/legacy/ModuleXbmc.h" //Needed to test getRegion()
 #include "language/LangInfo.h"
+#include "language/LanguageLoader.h"
 #include "resources/LocalizeStrings.h"
 #include "resources/ResourcesComponent.h"
 #include "utils/XTimeUtils.h"
@@ -197,6 +198,9 @@ TEST_F(TestDateTime, SetFromDBDate)
 
 TEST_F(TestDateTime, SetFromDBTime)
 {
+#if defined(TARGET_DARWIN_OSX) || defined(TARGET_FREEBSD)
+  GTEST_SKIP() << "mktime does not handle dates before 1900 on this platform";
+#endif
   CDateTime dateTime1;
   EXPECT_TRUE(dateTime1.SetFromDBTime("12:34"));
   EXPECT_EQ(dateTime1.GetHour(), 12);
@@ -439,7 +443,7 @@ TEST_F(TestDateTime, GetAsLocalized)
   // "YYYY. MMMM. D"
 
   ASSERT_TRUE(CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Load(
-      g_langInfo.GetLanguagePath(), "resource.language.en_gb"));
+      KODI::LANGUAGE::CLanguageLoader::GetLanguagePath(), "resource.language.en_gb"));
 
   // 24 hour clock must be set before time format
   g_langInfo.Set24HourClock(false);

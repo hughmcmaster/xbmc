@@ -72,6 +72,7 @@
 #include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
 #include "utils/Variant.h"
+#include "utils/XBMCTinyXML.h"
 #include "utils/log.h"
 #include "view/GUIViewState.h"
 
@@ -767,6 +768,14 @@ bool CGUIMediaWindow::GetDirectory(const std::string &strDirectory, CFileItemLis
       viaNode = GetDirectoryItems(nodeUrl, nodeItems, UseFileDirectories());
       if (viaNode)
       {
+        if (nodeItems.GetPath() != m_libraryFilterDbPath)
+        {
+          // Refresh() keeps the filter path, so move it to the new node query
+          CURL filterPathUrl{nodeItems.GetPath()};
+          if (const CURL oldFilterPathUrl{m_strFilterPath}; oldFilterPathUrl.HasOption("filter"))
+            filterPathUrl.SetOption("filter", oldFilterPathUrl.GetOption("filter"));
+          m_strFilterPath = filterPathUrl.Get();
+        }
         m_libraryFilterDbPath = nodeItems.GetPath();
       }
       else if (XFILE::CDirectory::Exists(m_libraryFilterNodePath, false))

@@ -12,7 +12,7 @@
 #include "URL.h"
 #include "application/AppParams.h"
 #include "filesystem/SpecialProtocol.h"
-#include "language/LangInfo.h"
+#include "language/Language.h"
 #include "language/i18n/LanguageTable.h"
 #include "network/DNSNameCache.h"
 #include "profiles/ProfileManager.h"
@@ -23,11 +23,9 @@
 #include "settings/lib/Setting.h"
 #include "settings/lib/SettingsManager.h"
 #include "utils/FileUtils.h"
-#include "utils/LangCodeExpander.h"
 #include "utils/Set.h"
 #include "utils/StringUtils.h"
 #include "utils/SystemInfo.h"
-#include "utils/URIUtils.h"
 #include "utils/XMLUtils.h"
 #include "utils/log.h"
 
@@ -36,6 +34,7 @@
 #include <climits>
 #include <regex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace ADDON;
@@ -71,6 +70,30 @@ void LoadLanguageCodes(const TiXmlElement* element)
   }
 
   KODI::LANGUAGE::I18N::CLanguageTable::GetInstance().Declare(languages);
+}
+
+/*!
+ * \brief Take the words a <sorttokens> block asks a sort to step over.
+ * \param[in] element The block, or nullptr when the file has none.
+ * \param[out] tokens The words, each stored once per separator it may be followed by.
+ */
+void LoadSortTokens(const TiXmlNode* element, KODI::LANGUAGE::CLanguage::Tokens& tokens)
+{
+  if (element == nullptr || element->NoChildren())
+    return;
+
+  for (const TiXmlElement* token = element->FirstChildElement("token"); token != nullptr;
+       token = token->NextSiblingElement())
+  {
+    if (token->FirstChild() == nullptr)
+      continue;
+
+    const char* separators = token->Attribute("separators");
+    KODI::LANGUAGE::CLanguage::AddSortToken(
+        tokens, token->FirstChild()->ValueStr(),
+        separators != nullptr ? std::string_view{separators}
+                              : KODI::LANGUAGE::CLanguage::DEFAULT_SORT_TOKEN_SEPARATORS);
+  }
 }
 
 bool ValidateVideoStackRegex(const CRegExp& regex)
@@ -277,6 +300,7 @@ void CAdvancedSettings::Initialize()
   m_DXVACheckCompatibilityPresent = false;
   m_videoFpsDetect = 1;
   m_gamesPacingMarginMs = 2.5f;
+  m_minTempo = 0.8f;
   m_maxTempo = 1.55f;
   m_videoPreferStereoStream = false;
 
@@ -305,7 +329,6 @@ void CAdvancedSettings::Initialize()
   m_handleMounting = CServiceBroker::GetAppParams()->IsStandAlone();
 
   m_fullScreenOnMovieStart = true;
-  m_cachePath = "special://temp/";
 
   m_videoFilenameAttributePairsRegExp = R"([\[{]\s*(?<key>\w+)\s*[=\-](?<value>[^\]}]+)[\]}])";
   m_videoCleanDateTimeRegExp = "(.*[^ _\\,\\.\\(\\)\\[\\]\\-])[ _\\.\\(\\)\\[\\]\\-]+(19[0-9][0-9]|20[0-9][0-9])([ _\\,\\.\\(\\)\\[\\]\\-]|[^0-9]$)?";
@@ -901,6 +924,7 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
 
     //0 = disable fps detect, 1 = only detect on timestamps with uniform spacing, 2 detect on all timestamps
     XMLUtils::GetInt(pElement, "fpsdetect", m_videoFpsDetect, 0, 2);
+    XMLUtils::GetFloat(pElement, "mintempo", m_minTempo, 0.5, 0.8);
     XMLUtils::GetFloat(pElement, "maxtempo", m_maxTempo, 1.5, 2.0);
     XMLUtils::GetBoolean(pElement, "preferstereostream", m_videoPreferStereoStream);
 
@@ -1163,17 +1187,12 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
   if (pExts)
     GetCustomExtensions(pExts, m_discStubExtensions);
 
-  m_vecTokens.clear();
-  CLangInfo::LoadTokens(pRootElement->FirstChild("sorttokens"), m_vecTokens);
+  KODI::LANGUAGE::CLanguage::Tokens sortTokens;
+  LoadSortTokens(pRootElement->FirstChild("sorttokens"), sortTokens);
+  KODI::LANGUAGE::CLanguage::GetInstance().DeclareSortTokens(std::move(sortTokens));
 
-  //! @todo Should cache path be given in terms of our predefined paths??
-  //! Are we even going to have predefined paths??
   std::string tmp;
-  if (XMLUtils::GetPath(pRootElement, "cachepath", tmp))
-    m_cachePath = tmp;
-  URIUtils::AddSlashAtEnd(m_cachePath);
 
-  CLangCodeExpander::LoadUserCodes(pRootElement->FirstChildElement("languagecodes"));
   LoadLanguageCodes(pRootElement->FirstChildElement("languagecodes"));
 
   // trailer matching regexps

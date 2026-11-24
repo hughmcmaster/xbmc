@@ -12,6 +12,7 @@
 #include "DVDDemuxers/DVDDemux.h"
 #include "DVDDemuxers/DVDDemuxCC.h"
 #include "DVDDemuxers/DVDDemuxFFmpeg.h"
+#include "DVDDemuxers/DVDDemuxTeletext.h"
 #include "DVDDemuxers/DVDDemuxUtils.h"
 #include "DVDDemuxers/DVDDemuxVobsub.h"
 #include "DVDDemuxers/DVDFactoryDemuxer.h"
@@ -48,7 +49,7 @@
 #include "input/actions/ActionIDs.h"
 #include "interfaces/AnnouncementManager.h"
 #include "jobs/JobQueue.h"
-#include "language/LangInfo.h"
+#include "language/Language.h"
 #include "messaging/ApplicationMessenger.h"
 #include "resources/LocalizeStrings.h"
 #include "resources/ResourcesComponent.h"
@@ -137,23 +138,22 @@ public:
       m_subStream(subStream)
   {
     auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
-    const std::string subLangSetting =
-        settings->GetString(CSettings::SETTING_LOCALE_SUBTITLELANGUAGE);
 
-    m_isSubNone = StringUtils::EqualsNoCase(subLangSetting, LANGINFO::subLanguageNone);
-    m_isPrefOriginal = StringUtils::EqualsNoCase(subLangSetting, LANGINFO::subLanguageOriginal);
-    m_isPrefForced = StringUtils::EqualsNoCase(subLangSetting, LANGINFO::subLanguageForcedOnly);
+    // None, original and forced only name no language, so they are asked of the preference
+    const CLanguagePreference& preference{CLanguage::GetInstance().SubtitlePreference()};
+
+    m_isSubNone = preference.Is(CLanguagePreference::Kind::Off);
+    m_isPrefOriginal = preference.Is(CLanguagePreference::Kind::Original);
+    m_isPrefForced = preference.Is(CLanguagePreference::Kind::ForcedOnly);
     m_isPrefHearingImp = settings->GetBool(CSettings::SETTING_ACCESSIBILITY_SUBHEARING);
     // The setting keeps its value while disabled for none and forced_only
     m_hideSameAudioLang = !m_isSubNone && !m_isPrefForced &&
                           settings->GetBool(CSettings::SETTING_SUBTITLES_HIDESAMEAUDIOLANGUAGE);
 
-    // Prefer the subtitle language setting; none, original and forced_only name no language, so
-    // fall back to the audio setting, and default, original and mediadefault name none either,
-    // so fall back to the language actually playing
-    m_subLang = g_langInfo.GetSubtitleLanguage(false);
-    if (m_subLang.IsUndetermined())
-      m_subLang = g_langInfo.GetAudioLanguage(false);
+    // The subtitle setting, falling back to the audio setting where it names no language. Where
+    // neither does, the language actually playing answers it better than the interface language,
+    // and it is not a setting, so it is supplied here rather than by CLanguage
+    m_subLang = CLanguage::GetInstance().Subtitle(false);
     if (m_subLang.IsUndetermined())
       m_subLang = m_playedAudioLang;
 
@@ -662,7 +662,10 @@ void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input,
     else if (!filename2.empty())
       source = Source(STREAM_SOURCE_DEMUX_SUB, filename);
     else
-      source = Source(STREAM_SOURCE_VIDEOMUX, filename);
+    {
+      UpdateMuxed(demuxer, STREAM_SOURCE_VIDEOMUX);
+      return;
+    }
 
     for (auto stream : demuxer->GetStreams())
     {
@@ -721,6 +724,33 @@ void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input,
 void CSelectionStreams::Update(const std::shared_ptr<CDVDInputStream>& input, CDVDDemux* demuxer)
 {
   Update(input, demuxer, "");
+}
+
+void CSelectionStreams::UpdateMuxed(CDVDDemux* demuxer, StreamSource source)
+{
+  for (auto stream : demuxer->GetStreams())
+  {
+    if (stream->type == StreamType::NONE)
+      continue;
+    stream->source = source;
+
+    SelectionStream s;
+    s.source = source;
+    s.type = stream->type;
+    s.id = stream->uniqueId;
+    s.demuxerId = stream->demuxerId;
+    s.language = stream->language;
+    s.flags = stream->flags;
+    s.name = stream->GetStreamName();
+    s.codecId = stream->codec;
+    s.channels = 0;
+    if (stream->type == StreamType::SUBTITLE)
+      s.codecDesc = static_cast<CDemuxStreamSubtitle*>(stream)->GetStreamType();
+    Update(s);
+  }
+  CServiceBroker::GetDataCacheCore().SignalAudioInfoChange();
+  CServiceBroker::GetDataCacheCore().SignalVideoInfoChange();
+  CServiceBroker::GetDataCacheCore().SignalSubtitleInfoChange();
 }
 
 int CSelectionStreams::CountTypeOfSource(StreamType type, StreamSource source) const
@@ -1149,8 +1179,9 @@ void CVideoPlayer::OpenDefaultStreams(bool reset)
   SelectionStream as = m_SelectionStreams.Get(StreamType::AUDIO, GetAudioStream());
   PredicateSubtitlePriority psp(as.language, m_processInfo->GetVideoSettings().m_SubtitleStream);
   valid = false;
-  // We need to close CC subtitles to avoid conflicts with external sub stream
-  if (m_CurrentSubtitle.source == STREAM_SOURCE_VIDEOMUX)
+  // We need to close CC/teletext subtitles to avoid conflicts with external sub stream
+  if (m_CurrentSubtitle.source == STREAM_SOURCE_VIDEOMUX ||
+      m_CurrentSubtitle.source == STREAM_SOURCE_TELETEXT)
     CloseStream(m_CurrentSubtitle, false);
 
   for (const auto& stream : m_SelectionStreams.Get(StreamType::SUBTITLE, psp))
@@ -1378,6 +1409,17 @@ bool CVideoPlayer::IsValidStream(const CCurrentStream& stream)
   {
     CDemuxStream* st = m_pCCDemuxer->GetStream(stream.id);
     if (st == NULL || st->disabled)
+      return false;
+    if (st->type != stream.type)
+      return false;
+    return true;
+  }
+  if (source == STREAM_SOURCE_TELETEXT)
+  {
+    if (!m_pTeletextDemuxer)
+      return false;
+    CDemuxStream* st = m_pTeletextDemuxer->GetStream(stream.id);
+    if (st == nullptr || st->disabled)
       return false;
     if (st->type != stream.type)
       return false;
@@ -2147,7 +2189,45 @@ void CVideoPlayer::ProcessTeletextData(CDemuxStream* pStream, DemuxPacket* pPack
   if (CheckSceneSkip(m_CurrentTeletext))
     drop = true;
 
+  if (m_pTeletextDemuxer && !drop)
+    ProcessTeletextSubtitles(pPacket);
+
   m_VideoPlayerTeletext->SendMessage(std::make_shared<CDVDMsgDemuxerPacket>(pPacket, drop));
+}
+
+void CVideoPlayer::ProcessTeletextSubtitles(DemuxPacket* pPacket)
+{
+  bool first = true;
+  while (!m_bAbortRequest)
+  {
+    DemuxPacket* pkt = m_pTeletextDemuxer->Read(first ? pPacket : nullptr);
+    first = false;
+
+    if (m_pTeletextDemuxer->GetNrOfStreams() !=
+        m_SelectionStreams.CountTypeOfSource(StreamType::SUBTITLE, STREAM_SOURCE_TELETEXT))
+    {
+      m_SelectionStreams.Clear(StreamType::SUBTITLE, STREAM_SOURCE_TELETEXT);
+      m_SelectionStreams.UpdateMuxed(m_pTeletextDemuxer.get(), STREAM_SOURCE_TELETEXT);
+      UpdateContent();
+      OpenDefaultStreams(false);
+    }
+
+    if (!pkt)
+      break;
+
+    if (!m_pTeletextDemuxer) // teletext stream got closed while reopening the default streams
+    {
+      CDVDDemuxUtils::FreeDemuxPacket(pkt);
+      break;
+    }
+
+    CDemuxStream* pSubStream = m_pTeletextDemuxer->GetStream(pkt->iStreamId);
+    if (pSubStream && m_CurrentSubtitle.id == pkt->iStreamId &&
+        m_CurrentSubtitle.source == STREAM_SOURCE_TELETEXT)
+      ProcessSubData(pSubStream, pkt);
+    else
+      CDVDDemuxUtils::FreeDemuxPacket(pkt);
+  }
 }
 
 void CVideoPlayer::ProcessRadioRDSData(CDemuxStream* pStream, DemuxPacket* pPacket)
@@ -3211,6 +3291,7 @@ void CVideoPlayer::OnExit()
   m_pSubtitleDemuxer.reset();
   m_subtitleDemuxerMap.clear();
   m_pCCDemuxer.reset();
+  m_pTeletextDemuxer.reset();
   if (m_pInputStream.use_count() > 1)
     throw std::runtime_error("m_pInputStream reference count is greater than 1");
   m_pInputStream.reset();
@@ -3283,6 +3364,7 @@ void CVideoPlayer::HandleMessages()
       m_pSubtitleDemuxer.reset();
       m_subtitleDemuxerMap.clear();
       m_pCCDemuxer.reset();
+      m_pTeletextDemuxer.reset();
       if (m_pInputStream.use_count() > 1)
         throw std::runtime_error("m_pInputStream reference count is greater than 1");
       m_pInputStream.reset();
@@ -4664,6 +4746,17 @@ bool CVideoPlayer::OpenStream(CCurrentStream& current, int64_t demuxerId, int iS
 
     hint.Assign(*stream, false);
   }
+  else if (STREAM_SOURCE_MASK(source) == STREAM_SOURCE_TELETEXT)
+  {
+    if (!m_pTeletextDemuxer)
+      return false;
+
+    stream = m_pTeletextDemuxer->GetStream(iStream);
+    if (!stream || stream->disabled)
+      return false;
+
+    hint.Assign(*stream, false);
+  }
 
   bool res;
   switch(current.type)
@@ -4701,7 +4794,9 @@ bool CVideoPlayer::OpenStream(CCurrentStream& current, int64_t demuxerId, int iS
       res = OpenSubtitleStream(hint);
       break;
     case StreamType::TELETEXT:
-      res = OpenTeletextStream(hint);
+      res = OpenTeletextStream(hint, stream,
+                               current.id != iStream || current.source != source ||
+                                   current.demuxerId != demuxerId);
       break;
     case StreamType::RADIO_RDS:
       res = OpenRadioRDSStream(hint);
@@ -4954,7 +5049,7 @@ void CVideoPlayer::AdaptForcedSubtitles()
   }
 }
 
-bool CVideoPlayer::OpenTeletextStream(CDVDStreamInfo& hint)
+bool CVideoPlayer::OpenTeletextStream(CDVDStreamInfo& hint, CDemuxStream* stream, bool reset)
 {
   if (!m_VideoPlayerTeletext->CheckStream(hint))
     return false;
@@ -4968,9 +5063,30 @@ bool CVideoPlayer::OpenTeletextStream(CDVDStreamInfo& hint)
   {
     if (!player->OpenStream(hint))
       return false;
+
+    // derive text subtitle streams from the teletext subtitle pages, the streams are
+    // published once the first teletext packet is processed (see ProcessTeletextSubtitles)
+    if (reset || !m_pTeletextDemuxer)
+    {
+      CloseTeletextSubtitles();
+      m_pTeletextDemuxer = std::make_unique<CDVDDemuxTeletext>(
+          hint.extradata.GetData(), hint.extradata.GetSize(),
+          stream ? stream->language : KODI::LANGUAGE::CLanguageTag());
+    }
   }
 
   return true;
+}
+
+void CVideoPlayer::CloseTeletextSubtitles()
+{
+  if (!m_pTeletextDemuxer)
+    return;
+
+  if (m_CurrentSubtitle.source == STREAM_SOURCE_TELETEXT)
+    CloseStream(m_CurrentSubtitle, false);
+  m_SelectionStreams.Clear(StreamType::SUBTITLE, STREAM_SOURCE_TELETEXT);
+  m_pTeletextDemuxer.reset();
 }
 
 bool CVideoPlayer::OpenRadioRDSStream(CDVDStreamInfo& hint)
@@ -5036,6 +5152,10 @@ bool CVideoPlayer::CloseStream(CCurrentStream& current, bool bWaitForBuffers)
     player->CloseStream(bWaitForBuffers);
   }
 
+  // subtitles derived from teletext pages cannot outlive the teletext stream
+  if (current.type == StreamType::TELETEXT)
+    CloseTeletextSubtitles();
+
   current.Clear();
   return true;
 }
@@ -5098,6 +5218,8 @@ void CVideoPlayer::FlushBuffers(double pts, bool accurate, bool sync)
   m_VideoPlayerVideo->Flush(sync);
   m_VideoPlayerSubtitle->Flush();
   m_VideoPlayerTeletext->Flush();
+  if (m_pTeletextDemuxer)
+    m_pTeletextDemuxer->Flush();
   m_VideoPlayerRadioRDS->Flush();
   m_VideoPlayerAudioID3->Flush();
 

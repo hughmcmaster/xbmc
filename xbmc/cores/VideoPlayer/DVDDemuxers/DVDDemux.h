@@ -100,7 +100,8 @@ enum StreamSource
   STREAM_SOURCE_NAV = 0x200,
   STREAM_SOURCE_DEMUX_SUB = 0x300,
   STREAM_SOURCE_TEXT = 0x400,
-  STREAM_SOURCE_VIDEOMUX = 0x500
+  STREAM_SOURCE_VIDEOMUX = 0x500,
+  STREAM_SOURCE_TELETEXT = 0x600
 };
 
 #define STREAM_SOURCE_MASK(a) ((a)&0xf00)
@@ -375,6 +376,11 @@ public:
   virtual void SetVideoResolution(unsigned int width, unsigned int height) {}
 
   virtual bool IsStreaming() const { return false; }
+
+  /*
+   * Whether the packets tell if they are keyframes, see DemuxPacket::m_keyFrame
+   */
+  virtual bool ReportsKeyFrames() const { return false; }
 
   /*
   * return the id of the demuxer

@@ -42,7 +42,7 @@ public:
    *
    * @return A CAddonInfo with all of the add-on's info, or empty if unknown
    */
-  AddonInfoPtr AddonInfo() { return m_addonInfo; }
+  AddonInfoPtr AddonInfo() const { return m_addonInfo; }
 
   /**
    * @brief To get the main type of this addon
@@ -128,6 +128,7 @@ public:
   std::string OriginName() const override;
   uint64_t PackageSize() const override;
   const InfoMap& ExtraInfo() const override;
+  const std::vector<KODI::LANGUAGE::CLanguageTag>& Languages() const override;
   const std::vector<DependencyInfo>& GetDependencies() const override;
   std::string FanArt() const override;
 
